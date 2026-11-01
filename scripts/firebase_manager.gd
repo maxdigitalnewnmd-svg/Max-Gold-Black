@@ -17,7 +17,7 @@ const GestorJuego = preload("res://scripts/gestor_juego.gd")
 
 static var instance: Node = null
 
-# Configuración del proyecto Firebase
+# Configuración del proyecto Firebase y Render Gateway
 const FIREBASE_CONFIG = {
 	"apiKey": "AIzaSyBUzF2MSfzmBPxPC2ILBlXhuT4k-4rmh9A",
 	"authDomain": "maxcoldblack.firebaseapp.com",
@@ -27,6 +27,9 @@ const FIREBASE_CONFIG = {
 	"appId": "1:755049366986:web:9d28edae0707fa6423bb33",
 	"measurementId": "G-H8LS6D0P3K"
 }
+
+const RENDER_GATEWAY_URL: String = "https://max-gold-black-api.onrender.com"
+var use_render_gateway: bool = true
 
 const SAVE_PATH_USER_ID = "user://firebase_user_id.dat"
 var player_id: String = "jugador_1"
@@ -160,19 +163,23 @@ func consultar_todo_en_vivo() -> void:
 func consultar_precios_y_boveda() -> void:
 	if http_market.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 		return
-	var url = "%s/Gestor" % firestore_base_url
+	var url = (RENDER_GATEWAY_URL + "/api/mercado") if use_render_gateway else ("%s/Gestor" % firestore_base_url)
 	var headers = ["Content-Type: application/json"]
 	http_market.request(url, headers, HTTPClient.METHOD_GET)
 
 func consultar_taller() -> void:
 	if http_taller.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 		return
-	var url = "%s/Taller" % firestore_base_url
+	var url = (RENDER_GATEWAY_URL + "/api/taller") if use_render_gateway else ("%s/Taller" % firestore_base_url)
 	var headers = ["Content-Type: application/json"]
 	http_taller.request(url, headers, HTTPClient.METHOD_GET)
 
 func _on_market_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		if use_render_gateway:
+			# Fallback inmediato a Firestore directo si Render está reiniciando
+			use_render_gateway = false
+			consultar_precios_y_boveda()
 		return
 
 	var json = JSON.new()
@@ -180,6 +187,18 @@ func _on_market_request_completed(result: int, response_code: int, _headers: Pac
 		return
 
 	var data: Dictionary = json.data
+
+	# Respuesta formateada por Render API Gateway
+	if data.get("success", false) == true and data.has("precios") and data.has("boveda"):
+		var p_in = data["precios"]
+		var b_in = data["boveda"]
+		for k in ["COAL", "GOLD", "EMERALD"]:
+			if p_in.has(k): precios_mercado[k] = int(p_in[k])
+			if b_in.has(k): boveda_liquidez[k] = int(b_in[k])
+		market_prices_updated.emit(precios_mercado, boveda_liquidez)
+		return
+
+	# Respuesta estándar de Firestore REST
 	if not data.has("documents") or not (data["documents"] is Array):
 		return
 
@@ -234,6 +253,26 @@ func _on_taller_request_completed(result: int, response_code: int, _headers: Pac
 
 	var json = JSON.new()
 	if json.parse(body.get_string_from_utf8()) != OK or not (json.data is Dictionary):
+		return
+
+	var data: Dictionary = json.data
+
+	# Respuesta formateada por Render API Gateway
+	if data.get("success", false) == true and data.has("taller"):
+		var t_in: Dictionary = data["taller"]
+		for str_tier in t_in.keys():
+			var tier_num = int(str_tier)
+			var item = t_in[str_tier]
+			taller_data[tier_num] = {
+				"doc_id": item.get("doc_id", "Camioneta"),
+				"titulo": item.get("titulo", ""),
+				"costo": int(item.get("costo", 0)),
+				"combustible": int(item.get("combustible", 15)),
+				"reparacion": int(item.get("reparacion", 10)),
+				"descripcion": item.get("descripcion", "")
+			}
+		taller_updated.emit(taller_data)
+		print("[FirebaseManager] Flota sincronizada desde Render API Gateway.")
 		return
 
 	var data: Dictionary = json.data
