@@ -428,6 +428,55 @@ func _on_player_load_completed(result: int, response_code: int, _headers: Packed
 		var json = JSON.new()
 		if json.parse(body.get_string_from_utf8()) == OK and json.data is Dictionary:
 			var fields = json.data.get("fields", {})
+			var coins = int(fields.get("coins", {}).get("integerValue", "0"))
+			var cash = int(fields.get("cash", {}).get("integerValue", "0"))
+			GestorJuego.coins = coins
+			GestorJuego.cash = cash
+			is_online = true
+			connection_status_changed.emit(true)
+			player_data_loaded.emit({ "coins": coins, "cash": cash })
+
+# ----------------- TRANSACCIONES SEGURAS CON BACKEND RENDER -----------------
+func solicitar_visto_bueno_render(mineral_key: String, cantidad: int, callback: Callable) -> void:
+	var http = HTTPRequest.new()
+	add_child(http)
+	http.request_completed.connect(func(res: int, code: int, _h: PackedStringArray, b: PackedByteArray):
+		var res_dict = {}
+		if res == HTTPRequest.RESULT_SUCCESS and (code == 200 or code == 400 or code == 403):
+			var json = JSON.new()
+			if json.parse(b.get_string_from_utf8()) == OK and json.data is Dictionary:
+				res_dict = json.data
+		callback.call(res_dict)
+		http.queue_free()
+	)
+	var url = RENDER_GATEWAY_URL + "/api/transaccion/solicitar"
+	var body = JSON.stringify({
+		"mineral": mineral_key,
+		"cantidad": cantidad,
+		"player_id": player_id,
+		"username": get_user_display_name()
+	})
+	http.request(url, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
+
+func liquidar_transaccion_render(token: String, callback: Callable) -> void:
+	var http = HTTPRequest.new()
+	add_child(http)
+	http.request_completed.connect(func(res: int, code: int, _h: PackedStringArray, b: PackedByteArray):
+		var res_dict = {}
+		if res == HTTPRequest.RESULT_SUCCESS and code == 200:
+			var json = JSON.new()
+			if json.parse(b.get_string_from_utf8()) == OK and json.data is Dictionary:
+				res_dict = json.data
+		callback.call(res_dict)
+		http.queue_free()
+	)
+	var url = RENDER_GATEWAY_URL + "/api/transaccion/liquidar"
+	var body = JSON.stringify({
+		"token": token,
+		"player_id": player_id
+	})
+	http.request(url, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
+
 			var loaded_coins = int(fields.get("coins", {}).get("integerValue", "0"))
 			var loaded_cash = int(fields.get("cash", {}).get("integerValue", "0"))
 			if loaded_coins > 0 or loaded_cash > 0:

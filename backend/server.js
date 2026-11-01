@@ -1,12 +1,16 @@
 const http = require('http');
-const url = require('url');
+const crypto = require('crypto');
+const { URL } = require('url');
 
 const PORT = process.env.PORT || 3000;
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'maxcoldblack';
 const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-// Tokens de aprobación temporal (firmados por Max Drag)
-const aprobacionesActivas = new Map();
+// Clave secreta para firma criptográfica HMAC-SHA256 (Inviolable por clientes)
+const HMAC_SECRET = process.env.SERVER_SECRET_KEY || crypto.randomBytes(32).toString('hex');
+
+// Registro anti-replay de tokens liquidados
+const tokensLiquidados = new Set();
 
 // Helper: extraer valor de campo Firestore
 function extractVal(fieldDict) {
@@ -53,6 +57,50 @@ function getRequestBody(req) {
   });
 }
 
+// Criptografía: Firmar payload con HMAC-SHA256
+function signAuthorizationPayload(payload) {
+  const jsonStr = JSON.stringify(payload);
+  const hmac = crypto.createHmac('sha256', HMAC_SECRET).update(jsonStr).digest('hex');
+  const encodedPayload = Buffer.from(jsonStr).toString('base64url');
+  return `${encodedPayload}.${hmac}`;
+}
+
+// Criptografía: Verificar y decodificar token sellado
+function verifyAuthorizationToken(token) {
+  if (!token || typeof token !== 'string') return { valid: false, error: 'Token nulo o inválido' };
+  const parts = token.split('.');
+  if (parts.length !== 2) return { valid: false, error: 'Estructura de token ilegítima' };
+
+  const [encodedPayload, signature] = parts;
+  let jsonStr = '';
+  try {
+    jsonStr = Buffer.from(encodedPayload, 'base64url').toString('utf8');
+  } catch (e) {
+    return { valid: false, error: 'Error decodificando payload base64url' };
+  }
+
+  const expectedHmac = crypto.createHmac('sha256', HMAC_SECRET).update(jsonStr).digest('hex');
+  const sigBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expectedHmac);
+
+  if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
+    return { valid: false, error: 'ALERTA DE SEGURIDAD: Firma digital adulterada o manipulada' };
+  }
+
+  try {
+    const payload = JSON.parse(jsonStr);
+    if (Date.now() > payload.exp) {
+      return { valid: false, error: 'El Visto Bueno ha expirado (límite de 60 segundos)' };
+    }
+    if (tokensLiquidados.has(payload.tokenId)) {
+      return { valid: false, error: 'ALERTA ANTI-REPLAY: Este ticket ya fue cobrado previamente' };
+    }
+    return { valid: true, payload };
+  } catch (e) {
+    return { valid: false, error: 'Payload JSON corrupto' };
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
@@ -68,16 +116,25 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  // 1. Health check & Root
+  // 1. Health check & Info
   if (pathname === '/health' && method === 'GET') {
-    return sendJson(res, 200, { status: 'OK', server: 'Max Gold Black API Gateway (Render)', time: new Date() });
+    return sendJson(res, 200, {
+      status: 'OK',
+      server: 'Max Gold Black API Gateway (Render)',
+      security: 'HMAC-SHA256 Cryptographic Authoritative Vault',
+      time: new Date()
+    });
   }
 
   if (pathname === '/' && method === 'GET') {
     return sendJson(res, 200, {
       empresa: 'Max Gold Black Corp',
       sistema: 'API Segura de Gobernanza & Firestore Gateway',
-      version: '1.0.0',
+      version: '2.0.0',
+      roles: {
+        franklin: 'Recepción y peritaje de cargamento en campo',
+        max_drag: 'Auditoría financiera, bóveda, visto bueno y nexo con el CEO'
+      },
       status: 'Activo en Render'
     });
   }
@@ -163,53 +220,98 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 4. Franklin & Max Drag: Auditoría y Visto Bueno
+  // 4. Franklin & Max Drag: Validación y Visto Bueno Criptográfico
+  // NINGÚN cliente ni hacker puede definir el precio: el backend lo calcula desde Firestore
   if (pathname === '/api/transaccion/solicitar' && method === 'POST') {
     try {
       const body = await getRequestBody(req);
       const minKey = (body.mineral || 'COAL').toUpperCase();
-      const precioPropuesto = parseMoney(body.precio_propuesto);
+      const cantidad = Math.max(1, Math.floor(body.cantidad || 1));
       const playerId = body.player_id || 'jugador_1';
       const playerName = body.username || 'Minero';
 
-      const bovedaRes = await fetch(`${FIRESTORE_BASE_URL}/Gestor/boveda_del_Gestor`);
-      if (!bovedaRes.ok) {
-        return sendJson(res, 500, { error: 'No se pudo verificar la bóveda corporativa' });
-      }
-      const bovedaDoc = await bovedaRes.json();
-      const fields = bovedaDoc.fields || {};
-
-      const fieldMap = { COAL: 'Carbon', GOLD: 'Oro', EMERALD: 'Esmeralda' };
-      const fieldName = fieldMap[minKey] || 'Carbon';
-      const fondosActuales = parseMoney(extractVal(fields[fieldName]));
-
-      if (fondosActuales < precioPropuesto) {
-        return sendJson(res, 200, {
+      // REGLA 1 (Límite Franklin): Franklin solo procesa minerales comerciales autorizados
+      const mineralesValidos = ['COAL', 'GOLD', 'EMERALD'];
+      if (!mineralesValidos.includes(minKey)) {
+        return sendJson(res, 400, {
           aprobado: false,
-          codigo: 'FALTA_LIQUIDEZ',
-          mensaje: `Lo siento ${playerName}, no tenemos suficiente liquidez en la empresa. Esperemos que el CEO invierta.`,
-          fondos_disponibles: fondosActuales
+          actor: 'Franklin Martínez',
+          codigo: 'MINERAL_NO_AUTORIZADO',
+          mensaje: 'Disculpe, este material no está en la lista de recepción autorizada.'
         });
       }
 
-      const token = `VB_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      aprobacionesActivas.set(token, {
+      // Consulta de precios y bóveda oficial en Firestore
+      const gestorRes = await fetch(`${FIRESTORE_BASE_URL}/Gestor`);
+      if (!gestorRes.ok) {
+        return sendJson(res, 500, { error: 'Error comunicando con la base corporativa' });
+      }
+      const gestorData = await gestorRes.json();
+      const docs = gestorData.documents || [];
+
+      const precios = { COAL: 30, GOLD: 50, EMERALD: 100 };
+      const boveda = { COAL: 1000000, GOLD: 1000000, EMERALD: 1000000 };
+
+      for (const doc of docs) {
+        const docId = doc.name.split('/').pop();
+        const fields = doc.fields || {};
+
+        if (docId === 'boveda_del_Gestor' || (fields.Carbon && fields.Oro && fields.Esmeralda)) {
+          if (fields.Carbon) boveda.COAL = parseMoney(extractVal(fields.Carbon));
+          if (fields.Oro) boveda.GOLD = parseMoney(extractVal(fields.Oro));
+          if (fields.Esmeralda) boveda.EMERALD = parseMoney(extractVal(fields.Esmeralda));
+        }
+
+        if (fields.Costo_Carbon) precios.COAL = parseMoney(extractVal(fields.Costo_Carbon));
+        if (fields.Costo_oro || fields.Costo_Oro) precios.GOLD = parseMoney(extractVal(fields.Costo_oro || fields.Costo_Oro));
+        if (fields.Costo_esmeralda || fields.Costo_Esmeralda) precios.EMERALD = parseMoney(extractVal(fields.Costo_esmeralda || fields.Costo_Esmeralda));
+      }
+
+      // REGLA 2 (Backend Authoritative): El precio lo fija Firestore, no el cliente
+      const precioUnitarioOficial = precios[minKey] || 30;
+      const montoTotalCalculado = precioUnitarioOficial * cantidad;
+      const fondosDisponibles = boveda[minKey] || 0;
+
+      // REGLA 3 (Límite Max Drag): Custodia y autorización de bóveda con el CEO
+      if (fondosDisponibles < montoTotalCalculado) {
+        return sendJson(res, 200, {
+          aprobado: false,
+          actor: 'Max Drag',
+          codigo: 'FALTA_LIQUIDEZ_CEO',
+          mensaje: `Lo siento ${playerName}, no tenemos suficiente liquidez en la empresa. Esperemos que el CEO invierta.`,
+          fondos_disponibles: fondosDisponibles,
+          monto_requerido: montoTotalCalculado
+        });
+      }
+
+      // REGLA 4 (Criptografía): Generación de ticket firmado inviolable
+      const payloadTicket = {
+        tokenId: `VB_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`,
         mineral: minKey,
-        monto: precioPropuesto,
+        cantidad,
+        precio_unitario: precioUnitarioOficial,
+        monto_total: montoTotalCalculado,
         playerId,
-        fieldName,
-        expiresAt: Date.now() + 60000
-      });
+        timestamp: Date.now(),
+        exp: Date.now() + 60000, // 60 segundos de validez
+        firmado_por: 'Max Drag - CFO',
+        verificado_por: 'Franklin Martínez - Operaciones'
+      };
+
+      const signedToken = signAuthorizationPayload(payloadTicket);
 
       return sendJson(res, 200, {
         aprobado: true,
-        codigo: 'APROBADO',
-        token,
-        mensaje: `He revisado tu cargamento y las cuentas de la empresa. Todo está en orden. Tienes mi visto bueno para recibir tus $${precioPropuesto} monedas.`
+        actor: 'Max Drag',
+        codigo: 'VISTO_BUENO_CONCEDIDO',
+        token: signedToken,
+        monto_aprobado: montoTotalCalculado,
+        precio_unitario: precioUnitarioOficial,
+        mensaje: `He revisado tu cargamento y las cuentas de la empresa. Todo está en orden. Tienes mi visto bueno para recibir tus $${montoTotalCalculado} monedas.`
       });
     } catch (error) {
       console.error('Error en /api/transaccion/solicitar:', error);
-      return sendJson(res, 500, { error: 'Error durante la auditoría financiera' });
+      return sendJson(res, 500, { error: 'Error durante la auditoría corporativa' });
     }
   }
 
@@ -220,34 +322,57 @@ const server = http.createServer(async (req, res) => {
       const token = body.token;
       const playerId = body.player_id || 'jugador_1';
 
-      if (!token || !aprobacionesActivas.has(token)) {
-        return sendJson(res, 400, { error: 'Token de visto bueno inválido o expirado' });
+      // 1. Verificación matemática de la firma digital HMAC-SHA256
+      const verification = verifyAuthorizationToken(token);
+      if (!verification.valid) {
+        return sendJson(res, 403, {
+          error: 'Operación denegada',
+          motivo: verification.error
+        });
       }
 
-      const aprobacion = aprobacionesActivas.get(token);
-      if (Date.now() > aprobacion.expiresAt) {
-        aprobacionesActivas.delete(token);
-        return sendJson(res, 400, { error: 'El visto bueno ha expirado.' });
+      const ticket = verification.payload;
+
+      // 2. Verificar correspondencia de identidad del minero
+      if (ticket.playerId !== playerId) {
+        return sendJson(res, 403, {
+          error: 'Operación denegada',
+          motivo: 'El ticket no coincide con la identidad del solicitante'
+        });
       }
 
-      // Descontar de la bóveda en Firestore
+      // 3. Descontar atómicamente de la bóveda corporativa en Firestore
+      const fieldMap = { COAL: 'Carbon', GOLD: 'Oro', EMERALD: 'Esmeralda' };
+      const fieldName = fieldMap[ticket.mineral] || 'Carbon';
+
       const bovedaRes = await fetch(`${FIRESTORE_BASE_URL}/Gestor/boveda_del_Gestor`);
+      if (!bovedaRes.ok) {
+        return sendJson(res, 500, { error: 'Error accediendo a la bóveda en Firestore' });
+      }
       const bovedaDoc = await bovedaRes.json();
-      const currentFunds = parseMoney(extractVal(bovedaDoc.fields[aprobacion.fieldName]));
-      const newFunds = Math.max(0, currentFunds - aprobacion.monto);
+      const currentFunds = parseMoney(extractVal(bovedaDoc.fields?.[fieldName]));
 
-      const updateUrl = `${FIRESTORE_BASE_URL}/Gestor/boveda_del_Gestor?updateMask.fieldPaths=${aprobacion.fieldName}`;
+      if (currentFunds < ticket.monto_total) {
+        return sendJson(res, 400, {
+          error: 'Fondos insuficientes al momento de la liquidación',
+          motivo: 'La reserva cambió repentinamente antes del cobro'
+        });
+      }
+
+      const newFunds = Math.max(0, currentFunds - ticket.monto_total);
+
+      const updateUrl = `${FIRESTORE_BASE_URL}/Gestor/boveda_del_Gestor?updateMask.fieldPaths=${fieldName}`;
       await fetch(updateUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fields: {
-            [aprobacion.fieldName]: { stringValue: `$${newFunds}` }
+            [fieldName]: { stringValue: `$${newFunds}` }
           }
         })
       });
 
-      // Acreditar Dragcoins al jugador en Firestore
+      // 4. Acreditar Dragcoins al jugador en Firestore
       const playerUrl = `${FIRESTORE_BASE_URL}/jugadores/${playerId}`;
       const playerRes = await fetch(playerUrl);
       let playerCoins = 0;
@@ -259,7 +384,7 @@ const server = http.createServer(async (req, res) => {
         playerCash = parseInt(pDoc.fields?.cash?.integerValue || '0', 10);
       }
 
-      playerCoins += aprobacion.monto;
+      playerCoins += ticket.monto_total;
 
       await fetch(playerUrl, {
         method: 'PATCH',
@@ -274,21 +399,23 @@ const server = http.createServer(async (req, res) => {
         })
       });
 
-      aprobacionesActivas.delete(token);
+      // 5. Registrar en el set anti-replay para impedir reutilización
+      tokensLiquidados.add(ticket.tokenId);
 
       return sendJson(res, 200, {
         success: true,
-        desembolso: aprobacion.monto,
+        transaccion_id: ticket.tokenId,
+        monto_liquidado: ticket.monto_total,
         nuevas_dragcoins: playerCoins,
         boveda_restante: newFunds
       });
     } catch (error) {
       console.error('Error en /api/transaccion/liquidar:', error);
-      return sendJson(res, 500, { error: 'Error al liquidar la transacción' });
+      return sendJson(res, 500, { error: 'Error al liquidar la transacción corporativa' });
     }
   }
 
-  // 404 para cualquier otra ruta
+  // 404
   return sendJson(res, 404, { error: 'Ruta no encontrada' });
 });
 

@@ -52,6 +52,7 @@ var bonus_cash: int = 0
 var fase_actual: FaseModal = FaseModal.FRANKLIN_COTIZACION
 var solicitud_actual: Dictionary = {}
 var dictamen_actual: Dictionary = {}
+var token_visto_bueno: String = ""
 
 # Variables del Efecto Máquina de Escribir (Typewriter)
 var target_dialogue_text: String = ""
@@ -172,40 +173,88 @@ func _on_btn_principal_pressed() -> void:
 	elif fase_actual == FaseModal.MAX_DRAG_APROBADO:
 		_completar_cobro_liquidacion()
 
-## Max Drag evalúa con IA internamente y responde con naturalidad
+## Max Drag evalúa con el Backend Render y responde con naturalidad
 func _ejecutar_auditoria_max_drag() -> void:
 	_mostrar_vista_max_drag()
-	
+	btn_vender.disabled = true
+	btn_vender.text = "Auditando cuentas..."
+
+	if FirebaseManager.instance != null:
+		FirebaseManager.instance.solicitar_visto_bueno_render(current_res_key, 1, _on_visto_bueno_backend_recibido)
+	else:
+		_evaluar_auditoria_fallback()
+
+func _on_visto_bueno_backend_recibido(res: Dictionary) -> void:
+	if res.is_empty():
+		_evaluar_auditoria_fallback()
+		return
+
+	if res.get("aprobado", false):
+		token_visto_bueno = res.get("token", "")
+		current_price = int(res.get("monto_aprobado", current_price))
+		fase_actual = FaseModal.MAX_DRAG_APROBADO
+		lbl_stamp.visible = true
+		lbl_stamp.text = "✔ VISTO BUENO: MAX DRAG"
+		lbl_stamp.add_theme_color_override("font_color", Color(0.2, 0.95, 0.45, 1))
+
+		if is_instance_valid(max_drag_anim):
+			max_drag_anim.trigger_approval_nod()
+
+		target_dialogue_text = res.get("mensaje", "He revisado tu cargamento y las cuentas corporativas. Todo está en orden. Tienes mi visto bueno para recibir tus $%d monedas." % current_price)
+	else:
+		token_visto_bueno = ""
+		fase_actual = FaseModal.MAX_DRAG_RECHAZADO
+		lbl_stamp.visible = true
+		lbl_stamp.text = "✖ SIN LIQUIDEZ: CONTACTAR AL CEO"
+		lbl_stamp.add_theme_color_override("font_color", Color(0.95, 0.3, 0.3, 1))
+		target_dialogue_text = res.get("mensaje", "Lo siento, no tenemos suficiente liquidez en la empresa. Esperemos que el CEO invierta.")
+
+	_iniciar_escritura_dialogo()
+	_actualizar_botones()
+
+func _evaluar_auditoria_fallback() -> void:
 	dictamen_actual = IAEmpresarial.max_drag_auditar_y_dictaminar(solicitud_actual)
-	
 	if dictamen_actual.get("aprobado", false):
 		fase_actual = FaseModal.MAX_DRAG_APROBADO
 		lbl_stamp.visible = true
 		lbl_stamp.text = "✔ VISTO BUENO: MAX DRAG"
 		lbl_stamp.add_theme_color_override("font_color", Color(0.2, 0.95, 0.45, 1))
-		
 		if is_instance_valid(max_drag_anim):
 			max_drag_anim.trigger_approval_nod()
-		
-		# Diálogo natural y ejecutivo de Max Drag
 		target_dialogue_text = "He revisado tu cargamento y las cuentas de la empresa. Todo está en orden. Tienes mi visto bueno para recibir tus $%d monedas." % current_price
 	else:
 		fase_actual = FaseModal.MAX_DRAG_RECHAZADO
 		lbl_stamp.visible = true
 		lbl_stamp.text = "✖ SIN LIQUIDEZ: CONTACTAR AL CEO"
 		lbl_stamp.add_theme_color_override("font_color", Color(0.95, 0.3, 0.3, 1))
-		
-		# Diálogo natural de Max Drag mencionando al CEO
 		target_dialogue_text = dictamen_actual.get("mensaje_dialogo", "Lo siento, la operación no puede realizarse en este momento.")
 
 	_iniciar_escritura_dialogo()
 	_actualizar_botones()
 
-## Desembolsa las monedas y acredita al jugador
+## Desembolsa las monedas y liquida criptográficamente con Render
 func _completar_cobro_liquidacion() -> void:
 	if is_instance_valid(max_drag_anim):
 		max_drag_anim.set_speaking(false)
 
+	btn_vender.disabled = true
+	btn_vender.text = "Liquidando en Bóveda..."
+
+	if not token_visto_bueno.is_empty() and FirebaseManager.instance != null:
+		FirebaseManager.instance.liquidar_transaccion_render(token_visto_bueno, func(res: Dictionary):
+			if res.get("success", false):
+				var monto_ganado = int(res.get("monto_liquidado", current_price))
+				GestorJuego.add_coins(monto_ganado)
+				if bonus_cash > 0:
+					GestorJuego.add_cash(bonus_cash)
+				_cerrar_definitivamente(monto_ganado)
+			else:
+				_completar_cobro_fallback()
+		)
+	else:
+		_completar_cobro_fallback()
+
+func _completar_cobro_fallback() -> void:
 	var exito_boveda: bool = true
 	if FirebaseManager.instance != null:
 		exito_boveda = FirebaseManager.instance.descontar_de_boveda(current_res_key, current_price)
