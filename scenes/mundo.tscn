@@ -81,6 +81,18 @@ corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_user_card"]
+bg_color = Color(0.08, 0.11, 0.16, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.65, 0.95, 0.9)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_buyer_modal"]
 bg_color = Color(0.06, 0.08, 0.12, 0.98)
 border_width_left = 2
@@ -324,11 +336,18 @@ layout_mode = 2
 theme_override_constants/separation = 10
 
 [node name="TabTaller" type="Button" parent="HUD/TallerModal/Margin/VBox/CategoryBar"]
-custom_minimum_size = Vector2(190, 36)
+custom_minimum_size = Vector2(170, 36)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
 theme_override_font_sizes/font_size = 13
 text = "🔧 Taller de Camionetas"
+
+[node name="TabUsuario" type="Button" parent="HUD/TallerModal/Margin/VBox/CategoryBar"]
+custom_minimum_size = Vector2(170, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "👤 Datos de Usuario"
 
 [node name="HSeparator" type="HSeparator" parent="HUD/TallerModal/Margin/VBox"]
 layout_mode = 2
@@ -528,6 +547,129 @@ custom_minimum_size = Vector2(100, 36)
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 text = "DESPLEGAR"
+
+[node name="UsuarioContainer" type="PanelContainer" parent="HUD/TallerModal/Margin/VBox"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_user_card")
+
+[node name="Margin" type="MarginContainer" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleBox" type="HBoxContainer" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox"]
+layout_mode = 2
+
+[node name="LblPerfilTitle" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/TitleBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 15
+text = "👑 PERFIL INSTITUCIONAL DEL CEO"
+
+[node name="BadgeStatus" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/TitleBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.95, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "🛡️ VERIFICADO RENDER"
+
+[node name="HSep1" type="HSeparator" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox"]
+layout_mode = 2
+
+[node name="Grid" type="GridContainer" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 6
+columns = 2
+
+[node name="LblTagUid" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "🆔 UID:"
+
+[node name="LblValUid" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "QEMLQtpeFYgfXmZL8eXQSzlMypg2"
+
+[node name="LblTagUser" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "👤 Usuario:"
+
+[node name="LblValUser" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.4, 1)
+theme_override_font_sizes/font_size = 12
+text = "Dramax"
+
+[node name="LblTagMail" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "✉️ Correo:"
+
+[node name="LblValMail" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "maxdigitalnewnmd@gmail.com"
+
+[node name="LblTagRole" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "👑 Cargo:"
+
+[node name="LblValRole" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.2, 1)
+theme_override_font_sizes/font_size = 12
+text = "CEO (Máxima Autoridad Inmutable)"
+
+[node name="LblTagFecha" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "📅 Creación:"
+
+[node name="LblValFecha" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "2026-11-01 15:37:24 (Cuenta Fundacional)"
+
+[node name="LblTagSecurity" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "🔒 Protección:"
+
+[node name="LblValSecurity" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.95, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "Inmutable • Incorregible • Anti-Suplantación"
+
+[node name="HSep2" type="HSeparator" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox"]
+layout_mode = 2
+
+[node name="LblBovedaPersonal" type="Label" parent="HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.7, 1)
+theme_override_font_sizes/font_size = 12
+text = "🪙 Bóveda Oficial: 0 Dragcoins • 💵 0 Max COP"
 
 [node name="CompradorModal" type="Control" parent="HUD"]
 visible = false

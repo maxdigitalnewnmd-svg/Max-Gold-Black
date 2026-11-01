@@ -2,28 +2,30 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Colección Gestor: Precios en tiempo real y Bóveda de liquidez
+    // Colección Gestor: Precios oficiales y Bóveda de liquidez
     match /Gestor/{docId} {
       allow read: if true;
       allow write: if true;
     }
 
-    // Colección Taller: Camionetas, costos, combustible y reparación
+    // Colección Taller: Flota de camionetas autorizadas
     match /Taller/{docId} {
       allow read: if true;
+      allow write: if false;
     }
 
-    // Colección de jugadores y progreso económico
+    // Colección Usuarios: Perfil corporativo, identidad del CEO e inmutabilidad
+    match /Usuarios/{uid} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Colección jugadores (compatibilidad)
     match /jugadores/{playerId} {
       allow read, write: if true;
     }
 
-    // Colección de Usuarios
-    match /Usuarios/{docId} {
-      allow read, write: if true;
-    }
-
-    // Cualquier otra ruta queda protegida
+    // Cualquier otra ruta queda denegada
     match /{document=**} {
       allow read, write: if false;
     }

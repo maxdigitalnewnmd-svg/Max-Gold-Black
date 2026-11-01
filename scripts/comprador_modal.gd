@@ -100,12 +100,17 @@ func open_for_resource(resource_key: String) -> void:
 	close_timer = 0.0
 	_mostrar_vista_franklin()
 
-	# Franklin prepara la orden internamente sin mencionarlo técnicamente
-	var player_id = FirebaseManager.instance.player_id if FirebaseManager.instance != null else "jugador_1"
-	solicitud_actual = IAEmpresarial.franklin_generar_solicitud(current_res_key, current_price, player_id)
+	# Franklin verifica internamente la identidad del usuario (UID, Username, Correo)
+	var uid = FirebaseManager.instance.current_user_uid if FirebaseManager.instance != null else "QEMLQtpeFYgfXmZL8eXQSzlMypg2"
+	var uname = FirebaseManager.instance.current_username if FirebaseManager.instance != null else "Dramax"
+	var urole = FirebaseManager.instance.current_role if FirebaseManager.instance != null else "CEO"
+	solicitud_actual = IAEmpresarial.franklin_generar_solicitud(current_res_key, current_price, uid)
 
-	# Diálogo natural y profesional de Franklin
-	target_dialogue_text = "¡Hola! Soy Franklin Martínez, tu distribuidor comercial. Noto que has extraído %s. Actualmente tiene un costo de $%d por saco. Esperemos la autorización de la Dirección Financiera para continuar." % [mineral_name, current_price]
+	# Diálogo natural y respetuoso según el rango institucional
+	if urole == "CEO":
+		target_dialogue_text = "¡Un honor saludarle, señor CEO %s! Noto que su prospección ha localizado %s. Actualmente cotiza a $%d por saco. Procederé con la solicitud formal para la Dirección Financiera." % [uname, mineral_name, current_price]
+	else:
+		target_dialogue_text = "¡Hola, minero %s! Noto que has extraído %s. Actualmente tiene un costo de $%d por saco. Esperemos la autorización de la Dirección Financiera para continuar." % [uname, mineral_name, current_price]
 	_iniciar_escritura_dialogo()
 
 	_actualizar_botones()

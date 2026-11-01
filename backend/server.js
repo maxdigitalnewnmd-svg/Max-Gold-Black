@@ -13,8 +13,17 @@ const ENCRYPTION_KEY_BUF = Buffer.from(ENCRYPTION_KEY_STR, 'utf8');
 // Clave HMAC para tickets corporativos firmados
 const HMAC_SECRET = process.env.SERVER_SECRET_KEY || crypto.randomBytes(32).toString('hex');
 
+// Identidad Oficial e Inmutable del CEO Fundador (Máxima Autoridad Incorregible)
+const CEO_CONFIG = {
+  uid: 'QEMLQtpeFYgfXmZL8eXQSzlMypg2',
+  username: 'Dramax',
+  correo: 'maxdigitalnewnmd@gmail.com',
+  tipo: 'CEO',
+  fecha_creacion: '2026-11-01 15:37:24 (Cuenta Fundacional CEO)'
+};
+
 // Historial temporal de jugadores para prevención de Speedhacks y validación temporal
-const lastExplorationTimes = new Map(); // playerId -> timestamp
+const lastExplorationTimes = new Map(); // uid -> timestamp
 const tokensLiquidados = new Set(); // Anti-replay cache
 
 // Reglas estrictas de probabilidad y tiempos mínimos por tipo de camioneta
@@ -22,12 +31,12 @@ const FLEET_EXPLORATION_RULES = {
   1: {
     nombre: 'T1 BÁSICO (Vibroseis Clásico)',
     frecuencia_nominal_ms: 3200,
-    frecuencia_minima_segura_ms: 2700, // Margen de latencia
+    frecuencia_minima_segura_ms: 2700,
     probabilidades_max: {
       COAL: 0.80,
       GOLD: 0.30,
       CRUDE: 0.15,
-      EMERALD: 0.00 // ¡0% de Esmeraldas en T1! Cualquier reporte de esmeralda es fraude directo.
+      EMERALD: 0.00 // ¡0% de Esmeraldas en T1!
     }
   },
   2: {
@@ -106,7 +115,6 @@ function decryptPayload(envelope) {
   return JSON.parse(decrypted);
 }
 
-// Helper: extraer valor de campo Firestore
 function extractVal(fieldDict) {
   if (!fieldDict) return null;
   if (fieldDict.stringValue !== undefined) return fieldDict.stringValue;
@@ -115,7 +123,6 @@ function extractVal(fieldDict) {
   return null;
 }
 
-// Helper: parsear dinero a entero limpio
 function parseMoney(val) {
   if (typeof val === 'number') return Math.floor(val);
   if (typeof val === 'string') {
@@ -125,7 +132,6 @@ function parseMoney(val) {
   return 0;
 }
 
-// Responder JSON estándar o Encriptado
 function sendEncryptedResponse(res, statusCode, dataObj, forcePlain = false) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
@@ -156,7 +162,127 @@ function getRequestBody(req) {
   });
 }
 
-// ----------------- CONSULTAS INTERNAS A FIRESTORE DESDE RENDER -----------------
+// ----------------- GOBERNANZA DE USUARIOS Y VALIDACIÓN DEL CEO -----------------
+async function getOrSyncUser(uid, candidateData = {}) {
+  const isCeoUid = (uid === CEO_CONFIG.uid);
+
+  // Intentar leer el usuario desde la colección oficial 'Usuarios'
+  const url = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
+  const res = await fetch(url);
+
+  if (res.ok) {
+    const doc = await res.json();
+    const fields = doc.fields || {};
+
+    let fechaCreacion = extractVal(fields.fecha_creacion);
+    if (!fechaCreacion) {
+      fechaCreacion = isCeoUid ? CEO_CONFIG.fecha_creacion : (doc.createTime || new Date().toISOString());
+      // Guardar fecha_creacion para que sea inmutable
+      await fetch(`${url}?updateMask.fieldPaths=fecha_creacion`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { fecha_creacion: { stringValue: fechaCreacion } } })
+      });
+    }
+
+    const userData = {
+      uid: uid,
+      username: isCeoUid ? CEO_CONFIG.username : (extractVal(fields.Username) || candidateData.username || 'Minero'),
+      correo: isCeoUid ? CEO_CONFIG.correo : (extractVal(fields.correo) || candidateData.correo || 'minero@maxgoldblack.com'),
+      tipo: isCeoUid ? CEO_CONFIG.tipo : (extractVal(fields.Tipo) || 'Minero'),
+      fecha_creacion: fechaCreacion,
+      moneda: parseMoney(extractVal(fields.Moneda)),
+      billete: parseMoney(extractVal(fields.Billete)),
+      carbon: parseMoney(extractVal(fields.Carbon)),
+      oro: parseMoney(extractVal(fields.Oro)),
+      esmeralda: parseMoney(extractVal(fields.Esmeralda)),
+      es_ceo: isCeoUid,
+      inmutable: true
+    };
+
+    return userData;
+  }
+
+  // Si no existe y es el CEO, crearlo con datos fundacionales inmutables
+  if (isCeoUid) {
+    const ceoFields = {
+      UID: { stringValue: CEO_CONFIG.uid },
+      Username: { stringValue: CEO_CONFIG.username },
+      correo: { stringValue: CEO_CONFIG.correo },
+      Tipo: { stringValue: CEO_CONFIG.tipo },
+      fecha_creacion: { stringValue: CEO_CONFIG.fecha_creacion },
+      Moneda: { stringValue: '0' },
+      Billete: { stringValue: '0' },
+      Carbon: { stringValue: '0' },
+      Oro: { stringValue: '0' },
+      Esmeralda: { stringValue: '0' }
+    };
+
+    await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: ceoFields })
+    });
+
+    return {
+      uid: CEO_CONFIG.uid,
+      username: CEO_CONFIG.username,
+      correo: CEO_CONFIG.correo,
+      tipo: CEO_CONFIG.tipo,
+      fecha_creacion: CEO_CONFIG.fecha_creacion,
+      moneda: 0,
+      billete: 0,
+      carbon: 0,
+      oro: 0,
+      esmeralda: 0,
+      es_ceo: true,
+      inmutable: true
+    };
+  }
+
+  // Si es un usuario nuevo, registrarlo como Minero con fecha de creación actual
+  const nowStr = new Date().toISOString();
+  const safeUsername = (candidateData.username && candidateData.username !== 'Dramax' && candidateData.username !== 'CEO')
+    ? candidateData.username : `Minero_${uid.substring(0, 5)}`;
+  const safeEmail = (candidateData.correo && candidateData.correo !== CEO_CONFIG.correo)
+    ? candidateData.correo : `usuario_${uid.substring(0, 6)}@maxgoldblack.com`;
+
+  const newFields = {
+    UID: { stringValue: uid },
+    Username: { stringValue: safeUsername },
+    correo: { stringValue: safeEmail },
+    Tipo: { stringValue: 'Minero' },
+    fecha_creacion: { stringValue: nowStr },
+    Moneda: { stringValue: '0' },
+    Billete: { stringValue: '0' },
+    Carbon: { stringValue: '0' },
+    Oro: { stringValue: '0' },
+    Esmeralda: { stringValue: '0' }
+  };
+
+  await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: newFields })
+  });
+
+  return {
+    uid,
+    username: safeUsername,
+    correo: safeEmail,
+    tipo: 'Minero',
+    fecha_creacion: nowStr,
+    moneda: 0,
+    billete: 0,
+    carbon: 0,
+    oro: 0,
+    esmeralda: 0,
+    es_ceo: false,
+    inmutable: true
+  };
+}
+
+// ----------------- CONSULTAS A GESTOR Y TALLER -----------------
 async function fetchGestorData() {
   const response = await fetch(`${FIRESTORE_BASE_URL}/Gestor`);
   if (!response.ok) throw new Error('Fallo al consultar Firestore Gestor');
@@ -219,7 +345,6 @@ async function fetchTallerData() {
   return taller;
 }
 
-// ----------------- ENCRIPTACIÓN DE TOKENS DE GOBERNANZA -----------------
 function signAuthorizationPayload(payload) {
   const jsonStr = JSON.stringify(payload);
   const hmac = crypto.createHmac('sha256', HMAC_SECRET).update(jsonStr).digest('hex');
@@ -283,6 +408,7 @@ const server = http.createServer(async (req, res) => {
       status: 'OK',
       server: 'Max Gold Black API Gateway (Render)',
       middleware: 'Intermediario Obligatorio Activo',
+      ceo: 'Dramax (QEMLQtpeFYgfXmZL8eXQSzlMypg2)',
       security: 'End-to-End AES-256-CBC + HMAC-SHA256',
       time: new Date()
     }, true);
@@ -294,12 +420,10 @@ const server = http.createServer(async (req, res) => {
       const rawBody = await getRequestBody(req);
       let requestData;
 
-      // Desencriptar payload entrante con validación de autenticidad
       try {
         if (rawBody.payload && rawBody.iv && rawBody.hmac) {
           requestData = decryptPayload(rawBody);
         } else {
-          // Si no viene encriptado, se rechaza para forzar encriptación total
           return sendEncryptedResponse(res, 403, {
             error: 'ACCESO DENEGADO: La petición debe viajar rigurosamente encriptada con AES-256-CBC.',
             codigo: 'ENCRYPTION_REQUIRED'
@@ -313,7 +437,32 @@ const server = http.createServer(async (req, res) => {
       }
 
       const action = requestData.action;
-      const playerId = requestData.player_id || 'jugador_1';
+      const uid = requestData.uid || requestData.player_id || CEO_CONFIG.uid;
+
+      // VALIDACIÓN ANTI-SUPLANTACIÓN DEL CEO
+      if (uid !== CEO_CONFIG.uid) {
+        const candidateUser = (requestData.username || '').toLowerCase();
+        const candidateEmail = (requestData.correo || '').toLowerCase();
+        const candidateTipo = (requestData.tipo || '').toUpperCase();
+
+        if (candidateUser === 'dramax' || candidateEmail === CEO_CONFIG.correo || candidateTipo === 'CEO') {
+          console.warn(`[SEGURIDAD] Intento de suplantación del CEO detectado por UID no autorizado: ${uid}`);
+          return sendEncryptedResponse(res, 403, {
+            error: 'VIOLACIÓN DE IDENTIDAD: Intento de suplantación del CEO Dramax bloqueado por Render Gateway.',
+            codigo: 'CEO_IMPERSONATION_BLOCKED'
+          });
+        }
+      }
+
+      // --- ACCIÓN: OBTENER DATOS DE USUARIO AUDITADOS (PERFIL CORPORATIVO) ---
+      if (action === 'GET_USUARIO') {
+        const user = await getOrSyncUser(uid, requestData);
+        return sendEncryptedResponse(res, 200, {
+          success: true,
+          usuario: user,
+          mensaje: 'Identidad corporativa verificada y protegida por Render.'
+        });
+      }
 
       // --- ACCIÓN: CONSULTAR MERCADO ---
       if (action === 'GET_MERCADO') {
@@ -338,7 +487,6 @@ const server = http.createServer(async (req, res) => {
       if (action === 'REPORTAR_HALLAZGO') {
         const tier = parseInt(requestData.camioneta_tier || 1, 10);
         const resourceType = (requestData.tipo_hallazgo || '').toUpperCase();
-        const clientTimestamp = parseInt(requestData.timestamp_muestra || Date.now(), 10);
         const now = Date.now();
 
         const rule = FLEET_EXPLORATION_RULES[tier];
@@ -349,10 +497,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         // VALIDACIÓN TEMPORAL (Speedhack Prevention)
-        const lastTime = lastExplorationTimes.get(playerId) || 0;
+        const lastTime = lastExplorationTimes.get(uid) || 0;
         const elapsed = now - lastTime;
         if (lastTime > 0 && elapsed < rule.frecuencia_minima_segura_ms) {
-          console.warn(`[ANTI-HACK] Speedhack detectado para ${playerId}: ${elapsed}ms < ${rule.frecuencia_minima_segura_ms}ms`);
+          console.warn(`[ANTI-HACK] Speedhack detectado para ${uid}: ${elapsed}ms < ${rule.frecuencia_minima_segura_ms}ms`);
           return sendEncryptedResponse(res, 429, {
             error: 'ANOMALÍA TEMPORAL DETECTADA: Frecuencia de muestreo físicamente imposible para el sensor sísmico.',
             codigo: 'SPEEDHACK_BLOCKED',
@@ -361,7 +509,7 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        // VALIDACIÓN MATEMÁTICA Y PROBABILÍSTICA
+        // VALIDACIÓN DE PROBABILIDAD (0% Esmeralda en T1)
         const maxProb = rule.probabilidades_max[resourceType];
         if (maxProb === undefined || maxProb <= 0) {
           console.warn(`[ANTI-HACK] Intento de inyección de mineral imposible: ${resourceType} en ${rule.nombre}`);
@@ -371,10 +519,8 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        // Actualizar último timestamp válido
-        lastExplorationTimes.set(playerId, now);
+        lastExplorationTimes.set(uid, now);
 
-        // Generar pase de hallazgo legal
         return sendEncryptedResponse(res, 200, {
           success: true,
           validado: true,
@@ -388,7 +534,9 @@ const server = http.createServer(async (req, res) => {
       if (action === 'SOLICITAR_TRANSACCION') {
         const minKey = (requestData.mineral || 'COAL').toUpperCase();
         const cantidad = Math.max(1, Math.floor(requestData.cantidad || 1));
-        const playerName = requestData.username || 'Minero';
+
+        // Obtener y verificar usuario oficial
+        const user = await getOrSyncUser(uid, requestData);
 
         // Límite Franklin: Solo minerales autorizados
         const validos = ['COAL', 'GOLD', 'EMERALD'];
@@ -406,26 +554,33 @@ const server = http.createServer(async (req, res) => {
         const montoTotal = precioOficial * cantidad;
         const fondosDisponibles = gestor.boveda[minKey] || 0;
 
-        // Límite Max Drag: Custodia de liquidez y política del CEO
+        // Límite Max Drag: Custodia de liquidez
         if (fondosDisponibles < montoTotal) {
+          const mensajeLiquidez = user.es_ceo
+            ? `Estimado CEO ${user.username}, la bóveda corporativa se encuentra temporalmente sin liquidez para esta transacción. Se requiere orden de capitalización.`
+            : `Lo siento ${user.username}, no tenemos suficiente liquidez en la empresa. Esperemos que el CEO invierta.`;
+
           return sendEncryptedResponse(res, 200, {
             aprobado: false,
             actor: 'Max Drag',
             codigo: 'FALTA_LIQUIDEZ_CEO',
-            mensaje: `Lo siento ${playerName}, no tenemos suficiente liquidez en la empresa. Esperemos que el CEO invierta.`,
+            mensaje: mensajeLiquidez,
             fondos_disponibles: fondosDisponibles,
             monto_requerido: montoTotal
           });
         }
 
-        // Emisión de ticket criptográfico firmado por Max Drag
+        // Emisión de ticket firmado inviolable
         const payloadTicket = {
           tokenId: `VB_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`,
           mineral: minKey,
           cantidad,
           precio_unitario: precioOficial,
           monto_total: montoTotal,
-          playerId,
+          uid: user.uid,
+          username: user.username,
+          correo: user.correo,
+          tipo: user.tipo,
           timestamp: Date.now(),
           exp: Date.now() + 60000,
           firmado_por: 'Max Drag - CFO',
@@ -434,6 +589,10 @@ const server = http.createServer(async (req, res) => {
 
         const signedToken = signAuthorizationPayload(payloadTicket);
 
+        const mensajeExito = user.es_ceo
+          ? `Estimado CEO ${user.username}, he verificado sus credenciales y el cargamento en bóveda. Todo está en orden bajo la normativa. Tiene mi visto bueno institucional para recibir sus $${montoTotal} Dragcoins.`
+          : `He revisado tu cargamento y tus credenciales de minero. Todo está en orden. Tienes mi visto bueno para recibir tus $${montoTotal} Dragcoins.`;
+
         return sendEncryptedResponse(res, 200, {
           aprobado: true,
           actor: 'Max Drag',
@@ -441,11 +600,16 @@ const server = http.createServer(async (req, res) => {
           token: signedToken,
           monto_aprobado: montoTotal,
           precio_unitario: precioOficial,
-          mensaje: `He revisado tu cargamento y las cuentas de la empresa. Todo está en orden. Tienes mi visto bueno para recibir tus $${montoTotal} monedas.`
+          usuario_verificado: {
+            uid: user.uid,
+            username: user.username,
+            tipo: user.tipo
+          },
+          mensaje: mensajeExito
         });
       }
 
-      // --- ACCIÓN: LIQUIDAR TRANSACCIÓN SEGURA EN FIRESTORE ---
+      // --- ACCIÓN: LIQUIDAR TRANSACCIÓN SEGURA EN FIRESTORE (USUARIOS + BOVEDA) ---
       if (action === 'LIQUIDAR_TRANSACCION') {
         const token = requestData.token;
         const verification = verifyAuthorizationToken(token);
@@ -457,14 +621,14 @@ const server = http.createServer(async (req, res) => {
         }
 
         const ticket = verification.payload;
-        if (ticket.playerId !== playerId) {
+        if (ticket.uid !== uid) {
           return sendEncryptedResponse(res, 403, {
             error: 'Violación de identidad en ticket',
-            motivo: 'El ticket no pertenece al jugador conectado'
+            motivo: 'El ticket no pertenece al usuario autenticado'
           });
         }
 
-        // Aplicar cambio a Firestore: Bóveda
+        // 1. Debitar de la bóveda en Gestor
         const fieldMap = { COAL: 'Carbon', GOLD: 'Oro', EMERALD: 'Esmeralda' };
         const fieldName = fieldMap[ticket.mineral] || 'Carbon';
 
@@ -481,28 +645,39 @@ const server = http.createServer(async (req, res) => {
           })
         });
 
-        // Aplicar cambio a Firestore: Jugador
-        const playerUrl = `${FIRESTORE_BASE_URL}/jugadores/${playerId}`;
-        const playerRes = await fetch(playerUrl);
-        let playerCoins = 0;
-        let playerCash = 0;
+        // 2. Acreditar Dragcoins en la colección oficial 'Usuarios/{uid}'
+        const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
+        const userRes = await fetch(userUrl);
+        let userCoins = 0;
+        let userCash = 0;
 
-        if (playerRes.ok) {
-          const pDoc = await playerRes.json();
-          playerCoins = parseInt(pDoc.fields?.coins?.integerValue || '0', 10);
-          playerCash = parseInt(pDoc.fields?.cash?.integerValue || '0', 10);
+        if (userRes.ok) {
+          const uDoc = await userRes.json();
+          userCoins = parseMoney(extractVal(uDoc.fields?.Moneda));
+          userCash = parseMoney(extractVal(uDoc.fields?.Billete));
         }
 
-        playerCoins += ticket.monto_total;
+        userCoins += ticket.monto_total;
 
-        await fetch(playerUrl, {
+        await fetch(`${userUrl}?updateMask.fieldPaths=Moneda`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             fields: {
-              coins: { integerValue: String(playerCoins) },
-              cash: { integerValue: String(playerCash) },
-              player_id: { stringValue: playerId },
+              Moneda: { stringValue: String(userCoins) }
+            }
+          })
+        });
+
+        // 3. Sincronizar también en jugadores/{uid} para soporte integral
+        await fetch(`${FIRESTORE_BASE_URL}/jugadores/${uid}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              coins: { integerValue: String(userCoins) },
+              cash: { integerValue: String(userCash) },
+              player_id: { stringValue: uid },
               last_updated: { stringValue: new Date().toISOString() }
             }
           })
@@ -514,12 +689,11 @@ const server = http.createServer(async (req, res) => {
           success: true,
           transaccion_id: ticket.tokenId,
           monto_liquidado: ticket.monto_total,
-          nuevas_dragcoins: playerCoins,
+          nuevas_dragcoins: userCoins,
           boveda_restante: newFunds
         });
       }
 
-      // Acción no soportada
       return sendEncryptedResponse(res, 400, { error: `Acción '${action}' no reconocida por el Gateway.` });
 
     } catch (err) {
@@ -528,7 +702,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 3. Compatibilidad con endpoints directos (para polling simple si es necesario)
+  // Compatibilidad
   if (pathname === '/api/mercado' && method === 'GET') {
     try {
       const data = await fetchGestorData();
@@ -552,5 +726,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`[Max Gold Black] Middleware API Gateway de Render activo en puerto ${PORT}`);
-  console.log(`[Seguridad] Encriptación Total AES-256-CBC + HMAC-SHA256 y Prevención Anti-Hackers Lista.`);
+  console.log(`[Seguridad] CEO Dramax verificado. Gobernanza de Usuarios y Fecha de Creación Activa.`);
 });

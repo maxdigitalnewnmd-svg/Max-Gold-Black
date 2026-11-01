@@ -74,10 +74,29 @@ const FOSSIL_SVG_PATHS: Array[String] = [
 # Taller Modal
 @onready var taller_modal: PanelContainer = $HUD/TallerModal
 @onready var btn_close_modal: Button = $HUD/TallerModal/Margin/VBox/Header/BtnCloseModal
+@onready var tab_taller: Button = $HUD/TallerModal/Margin/VBox/CategoryBar/TabTaller
+@onready var tab_usuario: Button = $HUD/TallerModal/Margin/VBox/CategoryBar/TabUsuario
+
+@onready var card_t1: Control = $HUD/TallerModal/Margin/VBox/CardT1
+@onready var card_t2: Control = $HUD/TallerModal/Margin/VBox/CardT2
+@onready var card_t3: Control = $HUD/TallerModal/Margin/VBox/CardT3
+@onready var card_t4: Control = $HUD/TallerModal/Margin/VBox/CardT4
+
 @onready var btn_deploy_t1: Button = $HUD/TallerModal/Margin/VBox/CardT1/Margin/HBox/BtnDeployT1
 @onready var btn_deploy_t2: Button = $HUD/TallerModal/Margin/VBox/CardT2/Margin/HBox/BtnDeployT2
 @onready var btn_deploy_t3: Button = $HUD/TallerModal/Margin/VBox/CardT3/Margin/HBox/BtnDeployT3
 @onready var btn_deploy_t4: Button = $HUD/TallerModal/Margin/VBox/CardT4/Margin/HBox/BtnDeployT4
+
+# Usuario Profile UI
+@onready var usuario_container: Control = $HUD/TallerModal/Margin/VBox/UsuarioContainer
+@onready var lbl_perfil_title: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/TitleBox/LblPerfilTitle
+@onready var lbl_val_uid: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid/LblValUid
+@onready var lbl_val_user: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid/LblValUser
+@onready var lbl_val_mail: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid/LblValMail
+@onready var lbl_val_role: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid/LblValRole
+@onready var lbl_val_fecha: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid/LblValFecha
+@onready var lbl_val_security: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid/LblValSecurity
+@onready var lbl_boveda_personal: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/LblBovedaPersonal
 
 # Modal Comprador de Recursos (Precio dinámico fluctuante)
 @onready var comprador_modal: Control = $HUD/CompradorModal
@@ -143,9 +162,14 @@ func _setup_hud() -> void:
 
 	btn_almacen.pressed.connect(func():
 		taller_modal.visible = not taller_modal.visible
-		_update_taller_cards()
+		if taller_modal.visible:
+			_set_modal_tab(0)
+			_update_taller_cards()
 	)
 	btn_close_modal.pressed.connect(func(): taller_modal.visible = false)
+
+	tab_taller.pressed.connect(func(): _set_modal_tab(0))
+	tab_usuario.pressed.connect(func(): _set_modal_tab(1))
 
 	btn_deploy_t1.pressed.connect(func(): deploy_truck(1))
 	btn_deploy_t2.pressed.connect(func(): deploy_truck(2))
@@ -164,11 +188,54 @@ func _setup_hud() -> void:
 	if is_instance_valid(comprador_modal):
 		comprador_modal.sold_and_resumed.connect(_on_resource_sold)
 
-	# Sincronización en tiempo real del Taller con Firestore
+	# Sincronización en tiempo real del Taller y Usuario con Firestore
 	var firebase_mgr = get_node_or_null("FirebaseManager")
 	if firebase_mgr != null:
 		firebase_mgr.taller_updated.connect(_on_taller_updated_from_firebase)
+		if firebase_mgr.has_signal("user_profile_updated"):
+			firebase_mgr.user_profile_updated.connect(_on_user_profile_updated)
 	_update_taller_cards()
+
+func _set_modal_tab(tab_idx: int) -> void:
+	var is_taller = (tab_idx == 0)
+	if is_instance_valid(card_t1): card_t1.visible = is_taller
+	if is_instance_valid(card_t2): card_t2.visible = is_taller
+	if is_instance_valid(card_t3): card_t3.visible = is_taller
+	if is_instance_valid(card_t4): card_t4.visible = is_taller
+	if is_instance_valid(usuario_container): usuario_container.visible = not is_taller
+
+	if is_instance_valid(tab_taller):
+		tab_taller.add_theme_color_override("font_color", Color(1, 0.85, 0.25, 1) if is_taller else Color(0.6, 0.75, 0.9, 0.7))
+	if is_instance_valid(tab_usuario):
+		tab_usuario.add_theme_color_override("font_color", Color(0.2, 0.95, 0.45, 1) if not is_taller else Color(0.6, 0.75, 0.9, 0.7))
+
+	if not is_taller:
+		_update_user_profile_card()
+
+func _on_user_profile_updated(_profile: Dictionary) -> void:
+	_update_user_profile_card()
+
+func _update_user_profile_card() -> void:
+	var firebase_mgr = get_node_or_null("FirebaseManager")
+	var profile: Dictionary = firebase_mgr.user_profile if firebase_mgr != null else {}
+	if profile.is_empty():
+		return
+
+	if is_instance_valid(lbl_val_uid):
+		lbl_val_uid.text = profile.get("uid", "QEMLQtpeFYgfXmZL8eXQSzlMypg2")
+	if is_instance_valid(lbl_val_user):
+		lbl_val_user.text = profile.get("username", "Dramax")
+	if is_instance_valid(lbl_val_mail):
+		lbl_val_mail.text = profile.get("correo", "maxdigitalnewnmd@gmail.com")
+	if is_instance_valid(lbl_val_role):
+		var tipo = profile.get("tipo", "CEO")
+		lbl_val_role.text = "%s (Máxima Autoridad)" % tipo if tipo == "CEO" else tipo
+	if is_instance_valid(lbl_val_fecha):
+		lbl_val_fecha.text = str(profile.get("fecha_creacion", "2026-11-01 15:37:24 (Cuenta Fundacional)"))
+	if is_instance_valid(lbl_boveda_personal):
+		var coins_cnt = profile.get("moneda", GestorJuego.coins)
+		var cash_cnt = profile.get("billete", GestorJuego.cash)
+		lbl_boveda_personal.text = "🪙 Bóveda Oficial: %s Dragcoins • 💵 %s Max COP" % [_format_number(int(coins_cnt)), _format_number(int(cash_cnt))]
 
 func _on_taller_updated_from_firebase(_taller_dict: Dictionary) -> void:
 	_update_taller_cards()

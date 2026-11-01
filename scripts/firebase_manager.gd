@@ -5,10 +5,12 @@ extends Node
 ## 2. Encriptación Total Militar: Todo viaja encriptado en AES-256-CBC con HMAC-SHA256.
 ## 3. Validación Anti-Hackers: Valida tiempos y probabilidades físicas de las camionetas.
 ## 4. Gobernanza Estricta: Franklin Martínez y Max Drag controlan la tesorería.
+## 5. Datos de Usuario & Blindaje del CEO: Gestión inmutable de UID, Username, Correo y Fecha de Creación.
 
 signal connection_status_changed(is_online: bool)
 signal market_prices_updated(precios: Dictionary, boveda: Dictionary)
 signal taller_updated(taller_data: Dictionary)
+signal user_profile_updated(user_data: Dictionary)
 signal player_data_loaded(data: Dictionary)
 signal player_data_saved()
 
@@ -19,7 +21,26 @@ static var instance: Node = null
 
 const RENDER_GATEWAY_URL: String = "https://max-gold-black-api.onrender.com"
 const SAVE_PATH_USER_ID: String = "user://firebase_user_id.dat"
-var player_id: String = "jugador_1"
+
+# Identidad Oficial del CEO Fundador (Colección 'Usuarios' en Firestore)
+var current_user_uid: String = "QEMLQtpeFYgfXmZL8eXQSzlMypg2"
+var current_username: String = "Dramax"
+var current_email: String = "maxdigitalnewnmd@gmail.com"
+var current_role: String = "CEO"
+
+var user_profile: Dictionary = {
+	"uid": "QEMLQtpeFYgfXmZL8eXQSzlMypg2",
+	"username": "Dramax",
+	"correo": "maxdigitalnewnmd@gmail.com",
+	"tipo": "CEO",
+	"fecha_creacion": "2026-11-01 15:37:24 (Cuenta Fundacional CEO)",
+	"moneda": 0,
+	"billete": 0,
+	"carbon": 0,
+	"oro": 0,
+	"esmeralda": 0,
+	"es_ceo": true
+}
 
 # Precios oficiales sincronizados desde Render API Gateway
 var precios_mercado: Dictionary = {
@@ -69,24 +90,14 @@ func _init_player_id() -> void:
 		if file:
 			var saved_id = file.get_as_text().strip_edges()
 			if saved_id.length() > 0:
-				player_id = saved_id
+				current_user_uid = saved_id
 				return
-	var uname = get_user_display_name().to_lower().replace(" ", "_")
-	var rng = RandomNumberGenerator.new()
-	rng.randomize()
-	player_id = "%s_%d" % [uname, rng.randi_range(1000, 9999)]
+	# Si no hay guardado, usamos por defecto la cuenta oficial del CEO
+	current_user_uid = "QEMLQtpeFYgfXmZL8eXQSzlMypg2"
 	var file_write = FileAccess.open(SAVE_PATH_USER_ID, FileAccess.WRITE)
 	if file_write:
-		file_write.store_string(player_id)
+		file_write.store_string(current_user_uid)
 		file_write.close()
-
-static func get_user_display_name() -> String:
-	var name: String = OS.get_environment("USERNAME")
-	if name.is_empty():
-		name = OS.get_environment("USER")
-	if name.is_empty():
-		name = "Minero"
-	return name.capitalize()
 
 # ----------------- PUENTE DE SEGURIDAD ENCRIPTADO (RENDER GATEWAY) -----------------
 func post_encrypted_gateway(action_payload: Dictionary, callback: Callable) -> void:
@@ -122,8 +133,11 @@ func consultar_todo_en_vivo() -> void:
 		return
 	is_polling = true
 
-	# 1. Consultar Mercado encriptado
-	post_encrypted_gateway({ "action": "GET_MERCADO", "player_id": player_id }, func(res: Dictionary):
+	# 1. Consultar Perfil de Usuario auditado (Usuarios)
+	consultar_usuario_en_vivo()
+
+	# 2. Consultar Mercado encriptado (Gestor)
+	post_encrypted_gateway({ "action": "GET_MERCADO", "uid": current_user_uid }, func(res: Dictionary):
 		if res.get("success", false) and res.has("precios") and res.has("boveda"):
 			var p_in = res["precios"]
 			var b_in = res["boveda"]
@@ -133,8 +147,8 @@ func consultar_todo_en_vivo() -> void:
 			market_prices_updated.emit(precios_mercado, boveda_liquidez)
 	)
 
-	# 2. Consultar Taller encriptado
-	post_encrypted_gateway({ "action": "GET_TALLER", "player_id": player_id }, func(res: Dictionary):
+	# 3. Consultar Taller encriptado (Taller)
+	post_encrypted_gateway({ "action": "GET_TALLER", "uid": current_user_uid }, func(res: Dictionary):
 		is_polling = false
 		if res.get("success", false) and res.has("taller"):
 			var t_in = res["taller"]
@@ -152,11 +166,32 @@ func consultar_todo_en_vivo() -> void:
 			taller_updated.emit(taller_data)
 	)
 
+func consultar_usuario_en_vivo() -> void:
+	post_encrypted_gateway({
+		"action": "GET_USUARIO",
+		"uid": current_user_uid,
+		"username": current_username,
+		"correo": current_email
+	}, func(res: Dictionary):
+		if res.get("success", false) and res.has("usuario"):
+			user_profile = res["usuario"]
+			current_username = user_profile.get("username", current_username)
+			current_email = user_profile.get("correo", current_email)
+			current_role = user_profile.get("tipo", current_role)
+			
+			var coins_val = int(user_profile.get("moneda", 0))
+			var cash_val = int(user_profile.get("billete", 0))
+			GestorJuego.coins = coins_val
+			GestorJuego.cash = cash_val
+			
+			user_profile_updated.emit(user_profile)
+	)
+
 # ----------------- VALIDACIÓN ANTI-HACKERS DE HALLAZGOS -----------------
 func reportar_hallazgo_seguro(camioneta_tier: int, tipo_hallazgo: String, callback: Callable) -> void:
 	var payload = {
 		"action": "REPORTAR_HALLAZGO",
-		"player_id": player_id,
+		"uid": current_user_uid,
 		"camioneta_tier": camioneta_tier,
 		"tipo_hallazgo": tipo_hallazgo,
 		"timestamp_muestra": int(Time.get_unix_time_from_system() * 1000)
@@ -169,8 +204,10 @@ func solicitar_visto_bueno_render(mineral_key: String, cantidad: int, callback: 
 		"action": "SOLICITAR_TRANSACCION",
 		"mineral": mineral_key,
 		"cantidad": cantidad,
-		"player_id": player_id,
-		"username": get_user_display_name()
+		"uid": current_user_uid,
+		"username": current_username,
+		"correo": current_email,
+		"tipo": current_role
 	}
 	post_encrypted_gateway(payload, callback)
 
@@ -178,9 +215,13 @@ func liquidar_transaccion_render(token: String, callback: Callable) -> void:
 	var payload = {
 		"action": "LIQUIDAR_TRANSACCION",
 		"token": token,
-		"player_id": player_id
+		"uid": current_user_uid
 	}
-	post_encrypted_gateway(payload, callback)
+	post_encrypted_gateway(payload, func(res: Dictionary):
+		if res.get("success", false):
+			consultar_usuario_en_vivo()
+		callback.call(res)
+	)
 
 func tiene_liquidez(res_key: String, monto: int) -> bool:
 	var key = res_key.to_upper()
