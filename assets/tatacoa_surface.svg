@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 320" width="1600" height="320">
+  <defs>
+    <!-- Gradiente de cielo desértico cálido y luminoso -->
+    <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1976d2"/>
+      <stop offset="45%" stop-color="#42a5f5"/>
+      <stop offset="80%" stop-color="#90caf9"/>
+      <stop offset="100%" stop-color="#ffe082"/>
+    </linearGradient>
+
+    <!-- Resplandor solar -->
+    <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="30%" stop-color="#fff59d" stop-opacity="0.85"/>
+      <stop offset="65%" stop-color="#ffb74d" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ff9800" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Gradiente para montañas lejanas -->
+    <linearGradient id="distMountainGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#9c786c"/>
+      <stop offset="100%" stop-color="#caa494"/>
+    </linearGradient>
+
+    <!-- Gradiente para mesetas y cerros medios -->
+    <linearGradient id="midMountainGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a33d1b"/>
+      <stop offset="100%" stop-color="#d35e2e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 1. Cielo -->
+  <rect width="1600" height="320" fill="url(#skyGradient)"/>
+
+  <!-- 2. Sol radiante del desierto -->
+  <circle cx="240" cy="80" r="95" fill="url(#sunGlow)"/>
+  <circle cx="240" cy="80" r="32" fill="#fffde7"/>
+  <circle cx="240" cy="80" r="22" fill="#ffffff"/>
+
+  <!-- Nubes atmosféricas estilizadas -->
+  <path d="M 520 65 Q 560 45 610 55 Q 670 40 730 60 Q 770 78 730 88 Q 670 95 590 88 Q 530 88 520 65 Z" fill="#ffffff" fill-opacity="0.35"/>
+  <path d="M 1120 75 Q 1160 58 1205 65 Q 1255 52 1300 70 Q 1330 85 1290 95 Q 1240 100 1175 95 Q 1130 92 1120 75 Z" fill="#ffffff" fill-opacity="0.3"/>
+
+  <!-- 3. Cordillera lejana en el horizonte (Montañas reales con crestas y mesetas) -->
+  <path d="M 0 250 L 0 180 
+           L 80 155 L 140 175 L 210 145 L 270 170 L 330 162 L 390 140 L 460 170 
+           L 540 148 L 620 180 L 710 150 L 790 175 L 870 138 L 940 168 L 1020 145 
+           L 1100 172 L 1180 142 L 1250 165 L 1330 140 L 1420 170 L 1510 150 L 1600 175 
+           L 1600 320 L 0 320 Z" fill="url(#distMountainGrad)" opacity="0.65"/>
+
+  <!-- Facetas de sombra en cordillera lejana -->
+  <polygon points="80,155 140,175 110,185" fill="#7d5e54" opacity="0.4"/>
+  <polygon points="210,145 270,170 240,180" fill="#7d5e54" opacity="0.4"/>
+  <polygon points="390,140 460,170 420,180" fill="#7d5e54" opacity="0.4"/>
+  <polygon points="710,150 790,175 750,185" fill="#7d5e54" opacity="0.4"/>
+  <polygon points="870,138 940,168 900,180" fill="#7d5e54" opacity="0.4"/>
+  <polygon points="1180,142 1250,165 1210,180" fill="#7d5e54" opacity="0.4"/>
+  <polygon points="1330,140 1420,170 1370,185" fill="#7d5e54" opacity="0.4"/>
+
+  <!-- 4. Macizo de Montañas y Mesetas Rojizas de la Tatacoa (Cuzco - Media distancia) -->
+  <!-- Montaña 1: Meseta escalonada izquierda -->
+  <polygon points="30,260 70,180 140,180 180,260" fill="#c04e22"/>
+  <polygon points="105,180 140,180 180,260 145,260" fill="#8f3211"/>
+
+  <!-- Montaña 2: Cerro crestado natural -->
+  <polygon points="150,265 240,165 330,265" fill="#c95628"/>
+  <polygon points="240,165 330,265 285,265" fill="#8f3211"/>
+
+  <!-- Montaña 3: Cerro con cresta asimétrica -->
+  <polygon points="310,260 410,175 490,260" fill="#c04e22"/>
+  <polygon points="410,175 490,260 450,260" fill="#842c0d"/>
+
+  <!-- Montaña 4: Gran meseta central (Tepuy / Mesa desértica) -->
+  <polygon points="470,265 540,170 660,170 730,265" fill="#c95628"/>
+  <polygon points="600,170 660,170 730,265 670,265" fill="#842c0d"/>
+
+  <!-- Montaña 5: Cerro rocoso intermedio -->
+  <polygon points="700,265 800,160 880,265" fill="#c04e22"/>
+  <polygon points="800,160 880,265 840,265" fill="#842c0d"/>
+
+  <!-- Montaña 6: Meseta escalonada este -->
+  <polygon points="860,265 930,175 1010,175 1070,265" fill="#c95628"/>
+  <polygon points="970,175 1010,175 1070,265 1020,265" fill="#842c0d"/>
+
+  <!-- Montaña 7: Pico montañoso esculpido -->
+  <polygon points="1040,265 1140,168 1220,265" fill="#c04e22"/>
+  <polygon points="1140,168 1220,265 1180,265" fill="#842c0d"/>
+
+  <!-- Montaña 8: Macizo derecho -->
+  <polygon points="1190,265 1280,165 1370,165 1450,265" fill="#c95628"/>
+  <polygon points="1325,165 1370,165 1450,265 1390,265" fill="#842c0d"/>
+
+  <!-- Montaña 9: Cerro final este -->
+  <polygon points="1420,265 1520,175 1600,265" fill="#c04e22"/>
+  <polygon points="1520,175 1600,265 1560,265" fill="#842c0d"/>
+
+  <!-- 5. Colinas onduladas y cañones de arcilla roja (Capa de enlace) -->
+  <path d="M 0 255 Q 120 220 250 245 Q 380 225 510 250 Q 640 220 780 248 Q 910 222 1040 250 Q 1170 220 1310 248 Q 1460 225 1600 252 L 1600 320 L 0 320 Z" fill="#b8451c"/>
+
+  <!-- 6. Dunas del primer plano (Suelo cálido de la Tatacoa) -->
+  <path d="M 0 282 Q 130 255 270 278 Q 410 258 550 282 Q 690 252 830 280 Q 970 256 1110 282 Q 1250 254 1390 278 Q 1500 262 1600 280 L 1600 320 L 0 320 Z" fill="#d35400"/>
+
+  <!-- Franja horizontal de tierra compactada donde se asentará la maquinaria -->
+  <rect x="0" y="306" width="1600" height="14" fill="#9e3915"/>
+
+  <!-- Cactus candelabro y vegetación típica de la Tatacoa distribuidos a lo largo de todo el desierto (0-1600px) -->
+  <!-- Cactus 1 (x=75) -->
+  <g fill="#4e210e">
+    <rect x="75" y="248" width="5" height="30" rx="2.5"/>
+    <path d="M 68 258 L 68 266 L 75 266" stroke="#4e210e" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+    <path d="M 80 261 L 87 261 L 87 254" stroke="#4e210e" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Cactus 2 (x=210) -->
+  <g fill="#4e210e">
+    <rect x="210" y="242" width="7" height="38" rx="3"/>
+    <path d="M 200 255 L 200 268 L 210 268" stroke="#4e210e" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    <path d="M 217 260 L 227 260 L 227 250" stroke="#4e210e" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Cactus 3 (x=360) -->
+  <g fill="#4e210e">
+    <rect x="360" y="246" width="6" height="32" rx="3"/>
+    <path d="M 352 258 L 352 266 L 360 266" stroke="#4e210e" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 366 261 L 374 261 L 374 253" stroke="#4e210e" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Cactus 4 (x=520) -->
+  <g fill="#4e210e">
+    <rect x="520" y="238" width="7" height="42" rx="3.5"/>
+    <path d="M 508 253 L 508 268 L 520 268" stroke="#4e210e" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M 527 258 L 539 258 L 539 248" stroke="#4e210e" stroke-width="5" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Cactus 5 (x=670) -->
+  <g fill="#4e210e">
+    <rect x="670" y="245" width="6" height="34" rx="3"/>
+    <path d="M 662 257 L 662 266 L 670 266" stroke="#4e210e" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 676 261 L 684 261 L 684 252" stroke="#4e210e" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Cactus 6 (x=830) -->
+  <g fill="#4e210e">
+    <rect x="830" y="240" width="7" height="40" rx="3"/>
+    <path d="M 819 254 L 819 267 L 830 267" stroke="#4e210e" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    <path d="M 837 259 L 847 259 L 847 251" stroke="#4e210e" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Cactus 7 (x=980) -->
+  <g fill="#4e210e">
+    <rect x="980" y="246" width="6" height="32" rx="3"/>
+    <path d="M 972 258 L 972 266 L 980 266" stroke="#4e210e" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 986 261 L 994 261 L 994 253" stroke="#4e210e" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Cactus 8 (x=1140) -->
+  <g fill="#4e210e">
+    <rect x="1140" y="238" width="7" height="42" rx="3.5"/>
+    <path d="M 1128 253 L 1128 268 L 1140 268" stroke="#4e210e" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M 1147 258 L 1159 258 L 1159 248" stroke="#4e210e" stroke-width="5" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Cactus 9 (x=1300) -->
+  <g fill="#4e210e">
+    <rect x="1300" y="244" width="6" height="35" rx="3"/>
+    <path d="M 1291 256 L 1291 267 L 1300 267" stroke="#4e210e" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 1306 260 L 1315 260 L 1315 251" stroke="#4e210e" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Cactus 10 (x=1470) -->
+  <g fill="#4e210e">
+    <rect x="1470" y="242" width="7" height="38" rx="3"/>
+    <path d="M 1459 255 L 1459 267 L 1470 267" stroke="#4e210e" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    <path d="M 1477 259 L 1487 259 L 1487 250" stroke="#4e210e" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

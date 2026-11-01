@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: max-gold-black-backend
+    env: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: FIREBASE_PROJECT_ID
+        value: maxcoldblack
+      - key: NODE_ENV
+        value: production

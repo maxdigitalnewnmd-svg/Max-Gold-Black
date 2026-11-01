@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <filter id="coal-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="1" dy="2" stdDeviation="1.5" flood-color="#050505" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+  <g filter="url(#coal-shadow)">
+    <!-- Bloque de roca carbonífera con facetas angulares -->
+    <polygon points="25,45 45,20 85,25 105,50 95,85 60,105 30,95 15,65" fill="#1b1d20" stroke="#0d0e10" stroke-width="2.5" stroke-linejoin="round"/>
+    
+    <!-- Facetas interiores con brillo de antracita -->
+    <polygon points="45,20 85,25 70,55 35,48" fill="#2c2f35"/>
+    <polygon points="85,25 105,50 78,72 70,55" fill="#1e2024"/>
+    <polygon points="35,48 70,55 60,85 28,75" fill="#25282d"/>
+    <polygon points="70,55 78,72 65,95 60,85" fill="#32363e"/>
+    <polygon points="60,85 65,95 60,105 30,95 28,75" fill="#181a1c"/>
+    <polygon points="78,72 105,50 95,85 65,95" fill="#141517"/>
+
+    <!-- Brillos minerales en aristas de carbón -->
+    <polyline points="45,20 70,55 60,85" stroke="#4a505b" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+    <polyline points="70,55 78,72 95,85" stroke="#4a505b" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <polyline points="35,48 60,85 30,95" stroke="#3b4049" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

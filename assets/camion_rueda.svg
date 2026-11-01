@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-24 -24 48 48" width="48" height="48">
+  <defs>
+    <!-- Gradiente del neumático de caucho pesado -->
+    <radialGradient id="wheelTireGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="60%" stop-color="#1e2630"/>
+      <stop offset="85%" stop-color="#12171d"/>
+      <stop offset="100%" stop-color="#0a0d10"/>
+    </radialGradient>
+    <!-- Gradiente de la llanta de aleación metálica -->
+    <radialGradient id="wheelRimGrad" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#7f8c8d"/>
+      <stop offset="65%" stop-color="#34495e"/>
+      <stop offset="100%" stop-color="#1c2833"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 1. Neumático exterior de caucho macizo -->
+  <circle cx="0" cy="0" r="22" fill="url(#wheelTireGrad)" stroke="#090c0f" stroke-width="2.5"/>
+
+  <!-- Tacos radiales agresivos en el borde del neumático (se notarán al girar) -->
+  <g stroke="#090c0f" stroke-width="3" stroke-linecap="round">
+    <line x1="-22" y1="0" x2="-17" y2="0"/>
+    <line x1="22" y1="0" x2="17" y2="0"/>
+    <line x1="0" y1="-22" x2="0" y2="-17"/>
+    <line x1="0" y1="22" x2="0" y2="17"/>
+    <line x1="-15.5" y1="-15.5" x2="-12" y2="-12"/>
+    <line x1="15.5" y1="15.5" x2="12" y2="12"/>
+    <line x1="-15.5" y1="15.5" x2="-12" y2="12"/>
+    <line x1="15.5" y1="-15.5" x2="12" y2="-12"/>
+  </g>
+
+  <!-- 2. Llanta metálica industrial -->
+  <circle cx="0" cy="0" r="14" fill="url(#wheelRimGrad)" stroke="#1a252f" stroke-width="1.5"/>
+
+  <!-- 3. Radios / Asimetría visible para percibir el giro a la perfección -->
+  <g stroke="#2c3e50" stroke-width="2.5">
+    <line x1="-12" y1="0" x2="12" y2="0"/>
+    <line x1="0" y1="-12" x2="0" y2="12"/>
+    <line x1="-8.5" y1="-8.5" x2="8.5" y2="8.5"/>
+    <line x1="-8.5" y1="8.5" x2="8.5" y2="-8.5"/>
+  </g>
+
+  <!-- 4. Cubo central y 6 pernos cromados de alta visibilidad -->
+  <circle cx="0" cy="0" r="6.5" fill="#95a5a6" stroke="#2c3e50" stroke-width="1.2"/>
+  <circle cx="0" cy="0" r="2.8" fill="#e74c3c"/>
+
+  <!-- Pernos cromados (giran alrededor del centro) -->
+  <circle cx="0" cy="-9.5" r="1.5" fill="#ffffff" stroke="#34495e" stroke-width="0.5"/>
+  <circle cx="8.2" cy="-4.8" r="1.5" fill="#ffffff" stroke="#34495e" stroke-width="0.5"/>
+  <circle cx="8.2" cy="4.8" r="1.5" fill="#ffffff" stroke="#34495e" stroke-width="0.5"/>
+  <circle cx="0" cy="9.5" r="1.5" fill="#ffffff" stroke="#34495e" stroke-width="0.5"/>
+  <circle cx="-8.2" cy="4.8" r="1.5" fill="#ffffff" stroke="#34495e" stroke-width="0.5"/>
+  <circle cx="-8.2" cy="-4.8" r="1.5" fill="#ffffff" stroke="#34495e" stroke-width="0.5"/>
+</svg>

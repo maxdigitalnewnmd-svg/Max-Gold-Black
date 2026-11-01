@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 140" width="280" height="140">
+  <defs>
+    <filter id="fossil-glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#120c08" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+  <g filter="url(#fossil-glow)">
+    <!-- Cráneo fósil del pez -->
+    <path d="M 50 70 C 45 50, 70 35, 95 40 C 105 45, 110 55, 105 75 C 100 88, 80 95, 60 90 C 50 85, 48 78, 50 70 Z" fill="#ebdcc0" stroke="#4c3725" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- Ojo fósil -->
+    <circle cx="75" cy="58" r="9" fill="#20150f" stroke="#4c3725" stroke-width="1.5"/>
+    <circle cx="75" cy="58" r="4" fill="#a48c6f"/>
+    <!-- Mandíbula pez -->
+    <path d="M 50 75 Q 70 82 85 78" stroke="#4c3725" stroke-width="2" fill="none"/>
+
+    <!-- Columna vertebral principal -->
+    <path d="M 105 68 Q 180 62 240 70" stroke="#ebdcc0" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M 105 68 Q 180 62 240 70" stroke="#4c3725" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+    <!-- Costillas fósiles curvas (arriba y abajo) -->
+    <!-- Costillas superiores -->
+    <path d="M 115 67 C 120 50, 130 42, 138 38" stroke="#ebdcc0" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M 130 66 C 135 48, 145 42, 155 38" stroke="#ebdcc0" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M 145 65 C 150 49, 160 43, 170 40" stroke="#ebdcc0" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M 160 64 C 165 50, 175 45, 185 43" stroke="#ebdcc0" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M 175 64 C 180 52, 190 48, 198 46" stroke="#ebdcc0" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M 190 65 C 195 55, 202 52, 210 50" stroke="#ebdcc0" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M 205 66 C 210 58, 215 56, 222 55" stroke="#ebdcc0" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+    <!-- Costillas inferiores -->
+    <path d="M 115 69 C 120 85, 130 95, 140 98" stroke="#ddcca8" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M 130 68 C 135 84, 145 94, 155 96" stroke="#ddcca8" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M 145 67 C 150 83, 160 92, 170 93" stroke="#ddcca8" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M 160 66 C 165 80, 175 88, 185 90" stroke="#ddcca8" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M 175 66 C 180 78, 190 85, 198 86" stroke="#ddcca8" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <path d="M 190 67 C 195 76, 202 80, 210 82" stroke="#ddcca8" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M 205 68 C 210 74, 215 77, 222 78" stroke="#ddcca8" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+    <!-- Aleta dorsal fósil -->
+    <path d="M 150 38 Q 170 20 185 30 Q 170 38 160 41 Z" fill="#cfbd98" stroke="#4c3725" stroke-width="1.5"/>
+
+    <!-- Aleta caudal (Cola fósil) -->
+    <path d="M 235 69 Q 255 45 268 40 Q 255 65 260 70 Q 255 75 268 98 Q 255 92 235 71 Z" fill="#d9c7a2" stroke="#4c3725" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+</svg>

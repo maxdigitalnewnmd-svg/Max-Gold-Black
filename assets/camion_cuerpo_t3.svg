@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 110" width="200" height="110">
+  <defs>
+    <filter id="t3Shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="#0a0705" flood-opacity="0.7"/>
+    </filter>
+    <linearGradient id="t3Orange" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff793f"/>
+      <stop offset="50%" stop-color="#d35400"/>
+      <stop offset="100%" stop-color="#a04000"/>
+    </linearGradient>
+    <linearGradient id="t3Gold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f9ca24"/>
+      <stop offset="60%" stop-color="#f0932b"/>
+      <stop offset="100%" stop-color="#b7950b"/>
+    </linearGradient>
+    <linearGradient id="t3Carbon" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2c3e50"/>
+      <stop offset="50%" stop-color="#1e272e"/>
+      <stop offset="100%" stop-color="#0f1418"/>
+    </linearGradient>
+  </defs>
+
+  <g filter="url(#t3Shadow)">
+    <!-- BASTIDOR DE IMPACTO REFORZADO TIER 3 (Chasis Blindado Oro y Crudo) -->
+    <rect x="16" y="62" width="170" height="12" rx="3" fill="url(#t3Carbon)" stroke="#000000" stroke-width="1.8"/>
+
+    <!-- Pasos de rueda blindados -->
+    <path d="M 16 72 C 16 48, 66 48, 66 72 Z" fill="#11161a"/>
+    <path d="M 66 72 C 66 48, 110 48, 110 72 Z" fill="#11161a"/>
+    <path d="M 144 72 C 144 48, 194 48, 194 72 Z" fill="#11161a"/>
+
+    <!-- TORRE DE MARTILLO SÍSMICO DE IMPACTO PROFUNDO TIER 3 (Color Oro / Naranja) -->
+    <rect x="112" y="28" width="9" height="44" rx="2" fill="url(#t3Gold)" stroke="#7d5a00" stroke-width="1.5"/>
+    <rect x="138" y="28" width="9" height="44" rx="2" fill="url(#t3Gold)" stroke="#7d5a00" stroke-width="1.5"/>
+    <rect x="108" y="26" width="43" height="8" rx="2" fill="url(#t3Carbon)" stroke="#d35400" stroke-width="1.5"/>
+    
+    <!-- Pistones hidráulicos de tungsteno -->
+    <rect x="115" y="34" width="3" height="30" fill="#ecf0f1"/>
+    <rect x="141" y="34" width="3" height="30" fill="#ecf0f1"/>
+
+    <!-- MÓDULO MINERO TRASERO (Fibra de carbono con franjas doradas de alta tecnología) -->
+    <path d="M 18 20 L 108 20 L 108 62 L 18 62 Z" fill="url(#t3Carbon)" stroke="#d35400" stroke-width="1.5"/>
+    <!-- Franja reflectante dorada -->
+    <rect x="18" y="42" width="90" height="8" fill="url(#t3Gold)"/>
+    <text x="26" y="48" font-family="sans-serif" font-size="6" font-weight="bold" fill="#000000">DEEP MINER T3</text>
+
+    <!-- Radar geofísico parabólico trasero -->
+    <path d="M 36 20 C 30 10, 50 10, 44 20 Z" fill="url(#t3Gold)" stroke="#d35400" stroke-width="1.5"/>
+    <line x1="40" y1="12" x2="48" y2="6" stroke="#f1c40f" stroke-width="2.5"/>
+    <circle cx="48" cy="6" r="2.5" fill="#e74c3c"/>
+
+    <!-- CABINA DE COMANDO INDUSTRIAL PESADA -->
+    <path d="M 146 12 L 182 12 L 194 34 L 198 62 L 146 62 Z" fill="url(#t3Orange)" stroke="#7d2e00" stroke-width="1.5"/>
+    <!-- Ventanas angulares de blindaje ámbar -->
+    <path d="M 168 16 L 188 34 L 168 34 Z" fill="#f39c12" opacity="0.85" stroke="#7d2e00" stroke-width="1.2"/>
+    <rect x="150" y="16" width="16" height="18" rx="2" fill="#f39c12" opacity="0.85" stroke="#7d2e00" stroke-width="1.2"/>
+
+    <!-- Parrilla de expedición delantera masiva -->
+    <rect x="194" y="42" width="6" height="24" rx="2" fill="url(#t3Carbon)" stroke="#e67e22" stroke-width="1.2"/>
+  </g>
+</svg>

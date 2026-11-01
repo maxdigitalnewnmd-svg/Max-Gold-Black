@@ -1,0 +1,197 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 100" width="220" height="100">
+  <defs>
+    <!-- Sombra suave realista proyectada en el suelo -->
+    <filter id="truckShadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#0a0705" flood-opacity="0.65"/>
+    </filter>
+
+    <!-- Gradiente metálico amarillo industrial moderno -->
+    <linearGradient id="bodyYellow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffde59"/>
+      <stop offset="35%" stop-color="#f5b041"/>
+      <stop offset="80%" stop-color="#eb984e"/>
+      <stop offset="100%" stop-color="#ba4a00"/>
+    </linearGradient>
+
+    <!-- Gradiente blanco perla / plateado para cabina y módulos -->
+    <linearGradient id="bodyWhite" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#f2f4f4"/>
+      <stop offset="100%" stop-color="#d5dbdb"/>
+    </linearGradient>
+
+    <!-- Vidrio polarizado moderno con reflejos solares -->
+    <linearGradient id="glassGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#eaf2f8"/>
+      <stop offset="30%" stop-color="#85c1e9"/>
+      <stop offset="75%" stop-color="#2471a3"/>
+      <stop offset="100%" stop-color="#154360"/>
+    </linearGradient>
+
+    <!-- Metal oscuro del chasis -->
+    <linearGradient id="chassisGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#34495e"/>
+      <stop offset="50%" stop-color="#212f3d"/>
+      <stop offset="100%" stop-color="#17202a"/>
+    </linearGradient>
+
+    <!-- Gradiente de los neumáticos pesados de desierto -->
+    <radialGradient id="tireGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="60%" stop-color="#1c232b"/>
+      <stop offset="85%" stop-color="#11161b"/>
+      <stop offset="100%" stop-color="#0a0d10"/>
+    </radialGradient>
+  </defs>
+
+  <g filter="url(#truckShadow)">
+    <!-- 1. CHASIS Y SUSPENSIÓN PESADA -->
+    <!-- Vigas del bastidor de acero reforzado -->
+    <rect x="22" y="58" width="176" height="11" rx="3" fill="url(#chassisGrad)" stroke="#0e141a" stroke-width="1.5"/>
+    <!-- Tanque de combustible diésel cilíndrico de aluminio -->
+    <rect x="76" y="55" width="28" height="12" rx="4" fill="#7f8c8d" stroke="#34495e" stroke-width="1.2"/>
+    <line x1="84" y1="55" x2="84" y2="67" stroke="#2c3e50" stroke-width="1.5"/>
+    <line x1="96" y1="55" x2="96" y2="67" stroke="#2c3e50" stroke-width="1.5"/>
+
+    <!-- Caja de baterías y peldaños de acceso -->
+    <rect x="146" y="60" width="16" height="8" rx="2" fill="#2c3e50" stroke="#1c2833" stroke-width="1"/>
+    <line x1="147" y1="64" x2="161" y2="64" stroke="#7f8c8d" stroke-width="1.5"/>
+
+    <!-- 2. PLACA VIBRADORA SÍSMICA CENTRAL (SISTEMA VIBROSEIS) -->
+    <!-- Cilindros hidráulicos de bajada al suelo -->
+    <rect x="108" y="50" width="6" height="18" fill="#95a5a6" stroke="#2c3e50" stroke-width="1"/>
+    <rect x="126" y="50" width="6" height="18" fill="#95a5a6" stroke="#2c3e50" stroke-width="1"/>
+    <!-- Gran placa base amortiguada de impacto sísmico -->
+    <rect x="104" y="66" width="34" height="6" rx="2" fill="#e67e22" stroke="#a04000" stroke-width="1.2"/>
+    <rect x="108" y="64" width="26" height="3" fill="#d35400"/>
+
+    <!-- 3. MÓDULO TÉCNICO TRASERO (Laboratorio y Generador Sísmico) -->
+    <!-- Contenedor tecnológico industrial con biseles aerodinámicos -->
+    <path d="M 24 32 L 140 32 L 140 58 L 24 58 Z" fill="url(#bodyWhite)" stroke="#95a5a6" stroke-width="1.5"/>
+    
+    <!-- Franja aerodinámica inferior amarillo de seguridad -->
+    <path d="M 24 48 L 140 48 L 140 58 L 24 58 Z" fill="url(#bodyYellow)" stroke="#b7950b" stroke-width="1"/>
+    
+    <!-- Rejillas de ventilación del motor generador sísmico -->
+    <g stroke="#7f8c8d" stroke-width="1.5" stroke-linecap="round">
+      <line x1="32" y1="36" x2="52" y2="36"/>
+      <line x1="32" y1="40" x2="52" y2="40"/>
+      <line x1="32" y1="44" x2="52" y2="44"/>
+    </g>
+
+    <!-- Compuertas de equipos y geófonos -->
+    <rect x="60" y="36" width="34" height="18" rx="2" fill="#eaeded" stroke="#bdc3c7" stroke-width="1"/>
+    <circle cx="90" cy="45" r="1.5" fill="#7f8c8d"/>
+
+    <!-- Tambor enrollador de cables sísmicos -->
+    <rect x="102" y="35" width="30" height="20" rx="3" fill="#2c3e50" stroke="#1c2833" stroke-width="1"/>
+    <line x1="106" y1="45" x2="128" y2="45" stroke="#f39c12" stroke-width="3" stroke-dasharray="3,2"/>
+
+    <!-- Cúpula de antena satelital GPS en el techo trasero -->
+    <path d="M 38 32 C 38 24, 52 24, 52 32 Z" fill="#ffffff" stroke="#bdc3c7" stroke-width="1.2"/>
+    <line x1="45" y1="24" x2="45" y2="16" stroke="#95a5a6" stroke-width="2"/>
+    <circle cx="45" cy="15" r="3" fill="#e74c3c"/>
+
+    <!-- 4. CABINA MODERNA AERODINÁMICA OFF-ROAD (Estilo Dakar / Sercel) -->
+    <!-- Carrocería principal de la cabina -->
+    <path d="M 140 28 L 178 28 L 198 44 L 202 58 L 140 58 Z" fill="url(#bodyYellow)" stroke="#b7950b" stroke-width="1.5" stroke-linejoin="round"/>
+
+    <!-- Visera solar protectora en el techo -->
+    <path d="M 172 26 L 196 36 L 178 36 Z" fill="#2c3e50"/>
+
+    <!-- Parabrisas frontal inclinado y ventana lateral -->
+    <path d="M 178 31 L 194 44 L 178 44 Z" fill="url(#glassGradient)" stroke="#1a5276" stroke-width="1"/>
+    <rect x="146" y="31" width="28" height="13" rx="2" fill="url(#glassGradient)" stroke="#1a5276" stroke-width="1"/>
+    <!-- Reflejo blanco diagonal en la ventana -->
+    <path d="M 152 32 L 160 32 L 150 43 L 147 43 Z" fill="#ffffff" opacity="0.55"/>
+
+    <!-- Barra de luces LED auxiliares en el techo -->
+    <rect x="162" y="24" width="22" height="4" rx="1.5" fill="#1c2833" stroke="#111" stroke-width="1"/>
+    <circle cx="166" cy="26" r="1.2" fill="#fff9c4"/>
+    <circle cx="170" cy="26" r="1.2" fill="#fff9c4"/>
+    <circle cx="174" cy="26" r="1.2" fill="#fff9c4"/>
+    <circle cx="178" cy="26" r="1.2" fill="#fff9c4"/>
+
+    <!-- Faros delanteros modernos xenón / LED con carcasa biselada -->
+    <path d="M 199 47 L 203 48 L 203 54 L 198 54 Z" fill="#ffffff" stroke="#f1c40f" stroke-width="1"/>
+    <rect x="200" y="49" width="3" height="4" fill="#fffde7"/>
+
+    <!-- Parachoques delantero reforzado (Bull-bar de expedición) -->
+    <path d="M 200 52 L 208 55 L 208 65 L 198 65 Z" fill="#2c3e50" stroke="#17202a" stroke-width="1.5"/>
+
+    <!-- Luz trasera de freno -->
+    <rect x="23" y="44" width="3" height="8" rx="1" fill="#e74c3c" stroke="#922b21" stroke-width="0.8"/>
+
+    <!-- Espejo retrovisor exterior -->
+    <rect x="174" y="36" width="3" height="7" rx="1" fill="#1c2833"/>
+    <line x1="172" y1="40" x2="174" y2="40" stroke="#1c2833" stroke-width="1.5"/>
+
+    <!-- 5. RUEDAS PESADAS 6x6 DE GRAN DIÁMETRO (NEUMÁTICOS MICHELIN DESERT) -->
+    <!-- Rueda Trasera 1 -->
+    <g transform="translate(48, 68)">
+      <circle cx="0" cy="0" r="18" fill="url(#tireGrad)" stroke="#0b0e12" stroke-width="2"/>
+      <circle cx="0" cy="0" r="11" fill="#34495e" stroke="#1c2833" stroke-width="1.2"/>
+      <circle cx="0" cy="0" r="5" fill="#7f8c8d"/>
+      <circle cx="0" cy="0" r="2" fill="#2c3e50"/>
+      <!-- Pernos de la llanta -->
+      <circle cx="0" cy="-8" r="1.2" fill="#ecf0f1"/>
+      <circle cx="7" cy="-4" r="1.2" fill="#ecf0f1"/>
+      <circle cx="7" cy="4" r="1.2" fill="#ecf0f1"/>
+      <circle cx="0" cy="8" r="1.2" fill="#ecf0f1"/>
+      <circle cx="-7" cy="4" r="1.2" fill="#ecf0f1"/>
+      <circle cx="-7" cy="-4" r="1.2" fill="#ecf0f1"/>
+      <!-- Tacos radiales agresivos del neumático -->
+      <line x1="-18" y1="0" x2="-14" y2="0" stroke="#000000" stroke-width="3"/>
+      <line x1="18" y1="0" x2="14" y2="0" stroke="#000000" stroke-width="3"/>
+      <line x1="0" y1="-18" x2="0" y2="-14" stroke="#000000" stroke-width="3"/>
+      <line x1="0" y1="18" x2="0" y2="14" stroke="#000000" stroke-width="3"/>
+      <line x1="-13" y1="-13" x2="-10" y2="-10" stroke="#000000" stroke-width="3"/>
+      <line x1="13" y1="13" x2="10" y2="10" stroke="#000000" stroke-width="3"/>
+      <line x1="-13" y1="13" x2="-10" y2="10" stroke="#000000" stroke-width="3"/>
+      <line x1="13" y1="-13" x2="10" y2="-10" stroke="#000000" stroke-width="3"/>
+    </g>
+
+    <!-- Rueda Trasera 2 -->
+    <g transform="translate(86, 68)">
+      <circle cx="0" cy="0" r="18" fill="url(#tireGrad)" stroke="#0b0e12" stroke-width="2"/>
+      <circle cx="0" cy="0" r="11" fill="#34495e" stroke="#1c2833" stroke-width="1.2"/>
+      <circle cx="0" cy="0" r="5" fill="#7f8c8d"/>
+      <circle cx="0" cy="0" r="2" fill="#2c3e50"/>
+      <circle cx="0" cy="-8" r="1.2" fill="#ecf0f1"/>
+      <circle cx="7" cy="-4" r="1.2" fill="#ecf0f1"/>
+      <circle cx="7" cy="4" r="1.2" fill="#ecf0f1"/>
+      <circle cx="0" cy="8" r="1.2" fill="#ecf0f1"/>
+      <circle cx="-7" cy="4" r="1.2" fill="#ecf0f1"/>
+      <circle cx="-7" cy="-4" r="1.2" fill="#ecf0f1"/>
+      <line x1="-18" y1="0" x2="-14" y2="0" stroke="#000000" stroke-width="3"/>
+      <line x1="18" y1="0" x2="14" y2="0" stroke="#000000" stroke-width="3"/>
+      <line x1="0" y1="-18" x2="0" y2="-14" stroke="#000000" stroke-width="3"/>
+      <line x1="0" y1="18" x2="0" y2="14" stroke="#000000" stroke-width="3"/>
+      <line x1="-13" y1="-13" x2="-10" y2="-10" stroke="#000000" stroke-width="3"/>
+      <line x1="13" y1="13" x2="10" y2="10" stroke="#000000" stroke-width="3"/>
+      <line x1="-13" y1="13" x2="-10" y2="10" stroke="#000000" stroke-width="3"/>
+      <line x1="13" y1="-13" x2="10" y2="-10" stroke="#000000" stroke-width="3"/>
+    </g>
+
+    <!-- Rueda Delantera -->
+    <g transform="translate(172, 68)">
+      <circle cx="0" cy="0" r="18" fill="url(#tireGrad)" stroke="#0b0e12" stroke-width="2"/>
+      <circle cx="0" cy="0" r="11" fill="#34495e" stroke="#1c2833" stroke-width="1.2"/>
+      <circle cx="0" cy="0" r="5" fill="#7f8c8d"/>
+      <circle cx="0" cy="0" r="2" fill="#2c3e50"/>
+      <circle cx="0" cy="-8" r="1.2" fill="#ecf0f1"/>
+      <circle cx="7" cy="-4" r="1.2" fill="#ecf0f1"/>
+      <circle cx="7" cy="4" r="1.2" fill="#ecf0f1"/>
+      <circle cx="0" cy="8" r="1.2" fill="#ecf0f1"/>
+      <circle cx="-7" cy="4" r="1.2" fill="#ecf0f1"/>
+      <circle cx="-7" cy="-4" r="1.2" fill="#ecf0f1"/>
+      <line x1="-18" y1="0" x2="-14" y2="0" stroke="#000000" stroke-width="3"/>
+      <line x1="18" y1="0" x2="14" y2="0" stroke="#000000" stroke-width="3"/>
+      <line x1="0" y1="-18" x2="0" y2="-14" stroke="#000000" stroke-width="3"/>
+      <line x1="0" y1="18" x2="0" y2="14" stroke="#000000" stroke-width="3"/>
+      <line x1="-13" y1="-13" x2="-10" y2="-10" stroke="#000000" stroke-width="3"/>
+      <line x1="13" y1="13" x2="10" y2="10" stroke="#000000" stroke-width="3"/>
+      <line x1="-13" y1="13" x2="-10" y2="10" stroke="#000000" stroke-width="3"/>
+      <line x1="13" y1="-13" x2="10" y2="-10" stroke="#000000" stroke-width="3"/>
+    </g>
+  </g>
+</svg>

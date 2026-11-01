@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" width="320" height="220">
+  <defs>
+    <filter id="root-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="2" dy="2" stdDeviation="2" flood-color="#0a0705" flood-opacity="0.7"/>
+    </filter>
+  </defs>
+  <g filter="url(#root-shadow)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Tronco base mineralizado superior -->
+    <path d="M 160 10 Q 155 45 150 70 Q 140 105 130 130" stroke="#3b2214" stroke-width="14" fill="none"/>
+    <path d="M 160 10 Q 155 45 150 70 Q 140 105 130 130" stroke="#684228" stroke-width="8" fill="none"/>
+    <path d="M 160 10 Q 155 45 150 70 Q 140 105 130 130" stroke="#a06d45" stroke-width="3" fill="none"/>
+
+    <!-- Rama de raíz izquierda principal -->
+    <path d="M 152 65 Q 120 75 90 95 Q 60 115 35 140" stroke="#3b2214" stroke-width="10" fill="none"/>
+    <path d="M 152 65 Q 120 75 90 95 Q 60 115 35 140" stroke="#684228" stroke-width="6" fill="none"/>
+    
+    <!-- Ramificaciones secundarias izquierda -->
+    <path d="M 90 95 Q 75 130 60 165 Q 48 190 25 205" stroke="#3b2214" stroke-width="6" fill="none"/>
+    <path d="M 90 95 Q 75 130 60 165 Q 48 190 25 205" stroke="#5a3721" stroke-width="3" fill="none"/>
+
+    <path d="M 60 115 Q 45 105 20 110" stroke="#3b2214" stroke-width="5" fill="none"/>
+    <path d="M 75 130 Q 95 150 105 180" stroke="#3b2214" stroke-width="4" fill="none"/>
+
+    <!-- Rama de raíz derecha principal -->
+    <path d="M 148 75 Q 185 85 220 110 Q 255 135 290 155" stroke="#3b2214" stroke-width="10" fill="none"/>
+    <path d="M 148 75 Q 185 85 220 110 Q 255 135 290 155" stroke="#684228" stroke-width="6" fill="none"/>
+
+    <!-- Ramificaciones secundarias derecha -->
+    <path d="M 220 110 Q 235 140 250 175 Q 265 195 295 205" stroke="#3b2214" stroke-width="6" fill="none"/>
+    <path d="M 220 110 Q 235 140 250 175 Q 265 195 295 205" stroke="#5a3721" stroke-width="3" fill="none"/>
+
+    <path d="M 185 85 Q 200 120 205 160" stroke="#3b2214" stroke-width="5" fill="none"/>
+    <path d="M 255 135 Q 275 125 305 130" stroke="#3b2214" stroke-width="4" fill="none"/>
+
+    <!-- Raíz central profunda -->
+    <path d="M 130 130 Q 140 160 145 190 Q 148 205 155 215" stroke="#3b2214" stroke-width="7" fill="none"/>
+    <path d="M 130 130 Q 140 160 145 190 Q 148 205 155 215" stroke="#684228" stroke-width="4" fill="none"/>
+  </g>
+</svg>

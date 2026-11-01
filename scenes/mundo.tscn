@@ -1,0 +1,695 @@
+[gd_scene load_steps=28 format=3 uid="uid://d3yq8o0k2b1w2"]
+
+[ext_resource type="Script" path="res://scripts/mundo.gd" id="1_mundo"]
+[ext_resource type="Texture2D" path="res://assets/tatacoa_surface.svg" id="2_surface_svg"]
+[ext_resource type="PackedScene" path="res://scenes/CamionExplorador.tscn" id="3_truck_scene"]
+[ext_resource type="Script" path="res://scripts/comprador_modal.gd" id="4_comprador_script"]
+[ext_resource type="Texture2D" path="res://assets/comprador_carbon.png" id="5_buyer_default_tex"]
+[ext_resource type="Script" path="res://scripts/comprador_personaje_anim.gd" id="6_anim_script"]
+[ext_resource type="Script" path="res://scripts/gestor_juego.gd" id="7_gestor_script"]
+[ext_resource type="Script" path="res://scripts/firebase_manager.gd" id="8_firebase_script"]
+[ext_resource type="Texture2D" path="res://assets/max_drag_front.png" id="9_max_drag_tex"]
+[ext_resource type="Script" path="res://scripts/max_drag_anim.gd" id="10_max_drag_anim_script"]
+[ext_resource type="Texture2D" path="res://assets/camion_cuerpo_vibro.svg" id="11_truck_t1_tex"]
+[ext_resource type="Texture2D" path="res://assets/camion_cuerpo_t2.svg" id="12_truck_t2_tex"]
+[ext_resource type="Texture2D" path="res://assets/camion_cuerpo_t3.svg" id="13_truck_t3_tex"]
+[ext_resource type="Texture2D" path="res://assets/camion_cuerpo_t4.svg" id="14_truck_t4_tex"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_item"]
+bg_color = Color(0.08, 0.1, 0.14, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.25, 0.35, 0.45, 0.8)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+expand_margin_left = 8.0
+expand_margin_top = 2.0
+expand_margin_right = 8.0
+expand_margin_bottom = 2.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_modal_bg"]
+bg_color = Color(0.06, 0.08, 0.12, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.85, 0.65, 0.15, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.6)
+shadow_size = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card_t1"]
+bg_color = Color(0.12, 0.15, 0.2, 0.9)
+border_width_left = 2
+border_color = Color(0.9, 0.9, 0.9, 0.8)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card_t2"]
+bg_color = Color(0.1, 0.16, 0.24, 0.9)
+border_width_left = 2
+border_color = Color(0.2, 0.7, 1, 0.85)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card_t3"]
+bg_color = Color(0.18, 0.14, 0.08, 0.9)
+border_width_left = 2
+border_color = Color(1, 0.75, 0.1, 0.9)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card_t4"]
+bg_color = Color(0.08, 0.18, 0.2, 0.9)
+border_width_left = 2
+border_color = Color(0, 0.95, 0.9, 0.95)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_buyer_modal"]
+bg_color = Color(0.06, 0.08, 0.12, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.9, 0.72, 0.2, 0.95)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.8)
+shadow_size = 18
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_buyer_frame"]
+bg_color = Color(0.04, 0.04, 0.06, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4, 0.32, 0.2, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_price_panel"]
+bg_color = Color(0.03, 0.05, 0.08, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.45, 0.55, 0.8)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_vender"]
+bg_color = Color(0.12, 0.56, 0.28, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 2
+border_color = Color(0.3, 0.85, 0.45, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dialogue_box"]
+bg_color = Color(0.05, 0.07, 0.11, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.85, 0.7, 0.22, 0.9)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_vender_green"]
+bg_color = Color(0.14, 0.65, 0.32, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 2
+border_color = Color(0.35, 0.9, 0.52, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_cancelar"]
+bg_color = Color(0.42, 0.18, 0.18, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 2
+border_color = Color(0.78, 0.32, 0.32, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="Mundo" type="Node2D"]
+script = ExtResource("1_mundo")
+
+[node name="GestorJuego" type="Node" parent="."]
+script = ExtResource("7_gestor_script")
+
+[node name="FirebaseManager" type="Node" parent="."]
+script = ExtResource("8_firebase_script")
+
+[node name="CieloFondo" type="TextureRect" parent="."]
+offset_left = -3000.0
+offset_right = 100000.0
+offset_bottom = 320.0
+texture = ExtResource("2_surface_svg")
+expand_mode = 1
+stretch_mode = 1
+
+[node name="GroundLayer" type="TileMapLayer" parent="."]
+
+[node name="MineralsContainer" type="Node2D" parent="."]
+z_index = 1
+
+[node name="FossilsContainer" type="Node2D" parent="."]
+z_index = 1
+
+[node name="CamionExplorador" parent="." instance=ExtResource("3_truck_scene")]
+position = Vector2(80, 320)
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(80, 400)
+zoom = Vector2(1.0, 1.0)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="TopLeftBar" type="HBoxContainer" parent="HUD"]
+offset_left = 14.0
+offset_top = 14.0
+offset_right = 160.0
+offset_bottom = 58.0
+
+[node name="BtnAlmacen" type="Button" parent="HUD/TopLeftBar"]
+custom_minimum_size = Vector2(125, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "📦 Almacén"
+
+[node name="TopRightBar" type="HBoxContainer" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -345.0
+offset_top = 14.0
+offset_right = -14.0
+offset_bottom = 58.0
+grow_horizontal = 0
+theme_override_constants/separation = 8
+alignment = 2
+
+[node name="CoinsPanel" type="PanelContainer" parent="HUD/TopRightBar"]
+custom_minimum_size = Vector2(150, 42)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_top_item")
+
+[node name="HBox" type="HBoxContainer" parent="HUD/TopRightBar/CoinsPanel"]
+layout_mode = 2
+alignment = 1
+
+[node name="Icon" type="Label" parent="HUD/TopRightBar/CoinsPanel/HBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "🪙"
+
+[node name="LblCoins" type="Label" parent="HUD/TopRightBar/CoinsPanel/HBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 15
+text = "0 Dragcoins"
+
+[node name="CashPanel" type="PanelContainer" parent="HUD/TopRightBar"]
+custom_minimum_size = Vector2(145, 42)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_top_item")
+
+[node name="HBox" type="HBoxContainer" parent="HUD/TopRightBar/CashPanel"]
+layout_mode = 2
+alignment = 1
+
+[node name="Icon" type="Label" parent="HUD/TopRightBar/CashPanel/HBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "💵"
+
+[node name="LblCash" type="Label" parent="HUD/TopRightBar/CashPanel/HBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.95, 0.5, 1)
+theme_override_font_sizes/font_size = 15
+text = "0 Max COP"
+
+[node name="ActiveBadge" type="PanelContainer" parent="HUD"]
+offset_left = 14.0
+offset_top = 64.0
+offset_right = 345.0
+offset_bottom = 92.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_top_item")
+
+[node name="LblActiveTruck" type="Label" parent="HUD/ActiveBadge"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.95, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "CAMIÓN: T1 (Básico Vibroseis)"
+
+[node name="TallerModal" type="PanelContainer" parent="HUD"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -310.0
+offset_top = -250.0
+offset_right = 310.0
+offset_bottom = 250.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_modal_bg")
+
+[node name="Margin" type="MarginContainer" parent="HUD/TallerModal"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 14
+
+[node name="VBox" type="VBoxContainer" parent="HUD/TallerModal/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="HUD/TallerModal/Margin/VBox"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="HUD/TallerModal/Margin/VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 16
+text = "🏢 ALMACÉN CENTRAL - MAX GOLD BLACK"
+
+[node name="BtnCloseModal" type="Button" parent="HUD/TallerModal/Margin/VBox/Header"]
+custom_minimum_size = Vector2(32, 28)
+layout_mode = 2
+text = "✖"
+
+[node name="CategoryBar" type="HBoxContainer" parent="HUD/TallerModal/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="TabTaller" type="Button" parent="HUD/TallerModal/Margin/VBox/CategoryBar"]
+custom_minimum_size = Vector2(190, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 13
+text = "🔧 Taller de Camionetas"
+
+[node name="HSeparator" type="HSeparator" parent="HUD/TallerModal/Margin/VBox"]
+layout_mode = 2
+
+[node name="CardT1" type="PanelContainer" parent="HUD/TallerModal/Margin/VBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card_t1")
+
+[node name="Margin" type="MarginContainer" parent="HUD/TallerModal/Margin/VBox/CardT1"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 6
+
+[node name="HBox" type="HBoxContainer" parent="HUD/TallerModal/Margin/VBox/CardT1/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PreviewImgT1" type="TextureRect" parent="HUD/TallerModal/Margin/VBox/CardT1/Margin/HBox"]
+custom_minimum_size = Vector2(85, 52)
+layout_mode = 2
+texture = ExtResource("11_truck_t1_tex")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Info" type="VBoxContainer" parent="HUD/TallerModal/Margin/VBox/CardT1/Margin/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Name" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT1/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Camioneta Basica (T1)"
+
+[node name="Desc" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT1/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.85, 0.85, 1)
+theme_override_font_sizes/font_size = 11
+text = "Carbón 80% • Oro 30% • Crudo 15% • Esmeralda 0%"
+
+[node name="Specs" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT1/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.9, 1, 0.9)
+theme_override_font_sizes/font_size = 10
+text = "Combustible: 15 / km • Reparación: $10"
+
+[node name="BtnDeployT1" type="Button" parent="HUD/TallerModal/Margin/VBox/CardT1/Margin/HBox"]
+custom_minimum_size = Vector2(100, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "DESPLEGAR"
+
+[node name="CardT2" type="PanelContainer" parent="HUD/TallerModal/Margin/VBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card_t2")
+
+[node name="Margin" type="MarginContainer" parent="HUD/TallerModal/Margin/VBox/CardT2"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 6
+
+[node name="HBox" type="HBoxContainer" parent="HUD/TallerModal/Margin/VBox/CardT2/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PreviewImgT2" type="TextureRect" parent="HUD/TallerModal/Margin/VBox/CardT2/Margin/HBox"]
+custom_minimum_size = Vector2(85, 52)
+layout_mode = 2
+texture = ExtResource("12_truck_t2_tex")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Info" type="VBoxContainer" parent="HUD/TallerModal/Margin/VBox/CardT2/Margin/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Name" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT2/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Camioneta normal (T2)"
+
+[node name="Desc" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT2/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.85, 0.85, 1)
+theme_override_font_sizes/font_size = 11
+text = "Carbón 100% • Oro 70% • Crudo 50% • Esmeralda 20%"
+
+[node name="Specs" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT2/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.9, 1, 0.9)
+theme_override_font_sizes/font_size = 10
+text = "Combustible: 20 / km • Reparación: $15"
+
+[node name="BtnDeployT2" type="Button" parent="HUD/TallerModal/Margin/VBox/CardT2/Margin/HBox"]
+custom_minimum_size = Vector2(100, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "DESPLEGAR"
+
+[node name="CardT3" type="PanelContainer" parent="HUD/TallerModal/Margin/VBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card_t3")
+
+[node name="Margin" type="MarginContainer" parent="HUD/TallerModal/Margin/VBox/CardT3"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 6
+
+[node name="HBox" type="HBoxContainer" parent="HUD/TallerModal/Margin/VBox/CardT3/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PreviewImgT3" type="TextureRect" parent="HUD/TallerModal/Margin/VBox/CardT3/Margin/HBox"]
+custom_minimum_size = Vector2(85, 52)
+layout_mode = 2
+texture = ExtResource("13_truck_t3_tex")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Info" type="VBoxContainer" parent="HUD/TallerModal/Margin/VBox/CardT3/Margin/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Name" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT3/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Camioneta Media (T3)"
+
+[node name="Desc" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT3/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.85, 0.85, 1)
+theme_override_font_sizes/font_size = 11
+text = "Carbón 30% • Oro 100% • Crudo 80% • Esmeralda 50%"
+
+[node name="Specs" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT3/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.9, 1, 0.9)
+theme_override_font_sizes/font_size = 10
+text = "Combustible: 28 / km • Reparación: $25"
+
+[node name="BtnDeployT3" type="Button" parent="HUD/TallerModal/Margin/VBox/CardT3/Margin/HBox"]
+custom_minimum_size = Vector2(100, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "DESPLEGAR"
+
+[node name="CardT4" type="PanelContainer" parent="HUD/TallerModal/Margin/VBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_card_t4")
+
+[node name="Margin" type="MarginContainer" parent="HUD/TallerModal/Margin/VBox/CardT4"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 6
+
+[node name="HBox" type="HBoxContainer" parent="HUD/TallerModal/Margin/VBox/CardT4/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PreviewImgT4" type="TextureRect" parent="HUD/TallerModal/Margin/VBox/CardT4/Margin/HBox"]
+custom_minimum_size = Vector2(85, 52)
+layout_mode = 2
+texture = ExtResource("14_truck_t4_tex")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Info" type="VBoxContainer" parent="HUD/TallerModal/Margin/VBox/CardT4/Margin/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Name" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT4/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Camioneta Alta (T4)"
+
+[node name="Desc" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT4/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.85, 0.85, 1)
+theme_override_font_sizes/font_size = 11
+text = "Crudo 95% • Esmeralda 85% • Oro 60% • Carbón 15%"
+
+[node name="Specs" type="Label" parent="HUD/TallerModal/Margin/VBox/CardT4/Margin/HBox/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 0.9, 1, 0.9)
+theme_override_font_sizes/font_size = 10
+text = "Combustible: 40 / km • Reparación: $45"
+
+[node name="BtnDeployT4" type="Button" parent="HUD/TallerModal/Margin/VBox/CardT4/Margin/HBox"]
+custom_minimum_size = Vector2(100, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "DESPLEGAR"
+
+[node name="CompradorModal" type="Control" parent="HUD"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("4_comprador_script")
+
+[node name="DimBackdrop" type="ColorRect" parent="HUD/CompradorModal"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.72)
+
+[node name="MainCard" type="PanelContainer" parent="HUD/CompradorModal"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -290.0
+offset_top = -370.0
+offset_right = 290.0
+offset_bottom = 370.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_buyer_modal")
+
+[node name="Margin" type="MarginContainer" parent="HUD/CompradorModal/MainCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="HUD/CompradorModal/MainCard/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="HUD/CompradorModal/MainCard/Margin/VBox"]
+layout_mode = 2
+
+[node name="LblHeaderBadge" type="Label" parent="HUD/CompradorModal/MainCard/Margin/VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 14
+text = "🏛️ COMERCIANTE FRANKLIN MARTÍNEZ"
+
+[node name="BtnSkip" type="Button" parent="HUD/CompradorModal/MainCard/Margin/VBox/Header"]
+custom_minimum_size = Vector2(32, 28)
+layout_mode = 2
+text = "✖"
+
+[node name="HSeparator" type="HSeparator" parent="HUD/CompradorModal/MainCard/Margin/VBox"]
+layout_mode = 2
+
+[node name="BuyerFrame" type="PanelContainer" parent="HUD/CompradorModal/MainCard/Margin/VBox"]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_buyer_frame")
+
+[node name="ImgBuyer" type="TextureRect" parent="HUD/CompradorModal/MainCard/Margin/VBox/BuyerFrame"]
+custom_minimum_size = Vector2(500, 320)
+layout_mode = 2
+texture = ExtResource("5_buyer_default_tex")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="PersonajeAnim" type="Control" parent="HUD/CompradorModal/MainCard/Margin/VBox/BuyerFrame"]
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("6_anim_script")
+
+[node name="ImgMaxDrag" type="TextureRect" parent="HUD/CompradorModal/MainCard/Margin/VBox/BuyerFrame"]
+visible = false
+custom_minimum_size = Vector2(500, 320)
+layout_mode = 2
+texture = ExtResource("9_max_drag_tex")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="MaxDragAnim" type="Control" parent="HUD/CompradorModal/MainCard/Margin/VBox/BuyerFrame"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("10_max_drag_anim_script")
+
+[node name="StampContainer" type="Control" parent="HUD/CompradorModal/MainCard/Margin/VBox/BuyerFrame"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="LblStamp" type="Label" parent="HUD/CompradorModal/MainCard/Margin/VBox/BuyerFrame/StampContainer"]
+visible = false
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -280.0
+offset_top = -42.0
+offset_right = -12.0
+offset_bottom = -12.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.2, 0.95, 0.45, 1)
+theme_override_font_sizes/font_size = 13
+text = "✔ VISTO BUENO: MAX DRAG (CFO)"
+
+[node name="DialogueBox" type="PanelContainer" parent="HUD/CompradorModal/MainCard/Margin/VBox"]
+custom_minimum_size = Vector2(0, 95)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_dialogue_box")
+
+[node name="Margin" type="MarginContainer" parent="HUD/CompradorModal/MainCard/Margin/VBox/DialogueBox"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="HUD/CompradorModal/MainCard/Margin/VBox/DialogueBox/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="SpeakerTag" type="Label" parent="HUD/CompradorModal/MainCard/Margin/VBox/DialogueBox/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 13
+text = "🗣️ Franklin Martínez (Distribuidor)"
+
+[node name="LblDialogo" type="Label" parent="HUD/CompradorModal/MainCard/Margin/VBox/DialogueBox/Margin/VBox"]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.95, 0.96, 0.98, 1)
+theme_override_font_sizes/font_size = 14
+text = "¡Hola! Soy Franklin Martínez, soy tu distribuidor. Noto que has extraído carbón. Actualmente tiene un costo de $25 por saco."
+autowrap_mode = 3
+
+[node name="ActionsContainer" type="HBoxContainer" parent="HUD/CompradorModal/MainCard/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="BtnVender" type="Button" parent="HUD/CompradorModal/MainCard/Margin/VBox/ActionsContainer"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_vender_green")
+text = "✔ Vender ($25)"
+
+[node name="BtnCancelar" type="Button" parent="HUD/CompradorModal/MainCard/Margin/VBox/ActionsContainer"]
+custom_minimum_size = Vector2(130, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_cancelar")
+text = "✖ Cancelar"

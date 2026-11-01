@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 105" width="180" height="105">
+  <defs>
+    <filter id="cuerpoShadow2" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#0a0705" flood-opacity="0.65"/>
+    </filter>
+
+    <linearGradient id="yellowGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffde59"/>
+      <stop offset="30%" stop-color="#f5b041"/>
+      <stop offset="75%" stop-color="#eb984e"/>
+      <stop offset="100%" stop-color="#b95e09"/>
+    </linearGradient>
+
+    <linearGradient id="whiteGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#f0f3f4"/>
+      <stop offset="100%" stop-color="#cbd5d7"/>
+    </linearGradient>
+
+    <linearGradient id="glassGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#eaf2f8"/>
+      <stop offset="30%" stop-color="#85c1e9"/>
+      <stop offset="75%" stop-color="#2471a3"/>
+      <stop offset="100%" stop-color="#154360"/>
+    </linearGradient>
+
+    <linearGradient id="chassisGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#34495e"/>
+      <stop offset="50%" stop-color="#212f3d"/>
+      <stop offset="100%" stop-color="#141c24"/>
+    </linearGradient>
+  </defs>
+
+  <g filter="url(#cuerpoShadow2)">
+    <!-- 1. CHASIS PESADO Y GUARDABARROS ELEVADOS (Mayor despeje del suelo) -->
+    <rect x="18" y="62" width="146" height="11" rx="3" fill="url(#chassisGrad2)" stroke="#0e141a" stroke-width="1.5"/>
+
+    <!-- Pasos de rueda curvos altos -->
+    <!-- Rueda 1 (cx=42, cy=72) -->
+    <path d="M 22 72 C 22 56, 62 56, 62 72 Z" fill="#141c24" stroke="#0e141a" stroke-width="1.2"/>
+    <!-- Rueda 2 (cx=76, cy=72) -->
+    <path d="M 58 72 C 58 56, 94 56, 94 72 Z" fill="#141c24" stroke="#0e141a" stroke-width="1.2"/>
+    <!-- Rueda Delantera (cx=142, cy=72) -->
+    <path d="M 124 72 C 124 56, 160 56, 160 72 Z" fill="#141c24" stroke="#0e141a" stroke-width="1.2"/>
+
+    <!-- Tanque de combustible diésel y caja de herramientas central -->
+    <rect x="98" y="58" width="22" height="14" rx="3" fill="#7f8c8d" stroke="#34495e" stroke-width="1.2"/>
+    <line x1="104" y1="58" x2="104" y2="72" stroke="#2c3e50" stroke-width="1.5"/>
+    <line x1="114" y1="58" x2="114" y2="72" stroke="#2c3e50" stroke-width="1.5"/>
+
+    <!-- Placa vibradora hidráulica central inferior -->
+    <rect x="100" y="70" width="18" height="4" rx="1.5" fill="#d35400" stroke="#963b06" stroke-width="1"/>
+
+    <!-- 2. MÓDULO TRASERO ELEVADO (MÁS ALTO Y TÉCNICO) -->
+    <!-- Cuerpo blanco alto del laboratorio sísmico -->
+    <path d="M 20 22 L 108 22 L 108 62 L 20 62 Z" fill="url(#whiteGrad2)" stroke="#95a5a6" stroke-width="1.5"/>
+    <!-- Banda inferior amarillo de seguridad -->
+    <path d="M 20 50 L 108 50 L 108 62 L 20 62 Z" fill="url(#yellowGrad2)" stroke="#b7950b" stroke-width="1"/>
+
+    <!-- Rejillas de ventilación altas del generador sísmico -->
+    <g stroke="#7f8c8d" stroke-width="2" stroke-linecap="round">
+      <line x1="28" y1="28" x2="48" y2="28"/>
+      <line x1="28" y1="33" x2="48" y2="33"/>
+      <line x1="28" y1="38" x2="48" y2="38"/>
+      <line x1="28" y1="43" x2="48" y2="43"/>
+    </g>
+
+    <!-- Ventana de control / panel del operador geológico -->
+    <rect x="56" y="28" width="22" height="15" rx="2" fill="url(#glassGrad2)" stroke="#1a5276" stroke-width="1"/>
+    
+    <!-- Unidad técnica / tambor de geófonos -->
+    <rect x="84" y="27" width="20" height="20" rx="3" fill="#2c3e50" stroke="#1c2833" stroke-width="1"/>
+    <line x1="88" y1="37" x2="100" y2="37" stroke="#f39c12" stroke-width="2.5" stroke-dasharray="3,2"/>
+
+    <!-- Cúpula satelital y antena GPS de alta precisión en el techo -->
+    <path d="M 32 22 C 32 14, 46 14, 46 22 Z" fill="#ffffff" stroke="#bdc3c7" stroke-width="1.2"/>
+    <line x1="39" y1="14" x2="39" y2="6" stroke="#7f8c8d" stroke-width="2.2"/>
+    <circle cx="39" cy="5" r="3" fill="#e74c3c"/>
+
+    <!-- Tubo de escape vertical industrial cromado -->
+    <rect x="105" y="10" width="4" height="22" rx="1.5" fill="#95a5a6" stroke="#566573" stroke-width="1"/>
+    <path d="M 105 10 Q 102 6 98 6" stroke="#95a5a6" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+    <!-- 3. CABINA DELANTERA ALTA Y ROBUSTA (Estilo Expedición Dakar) -->
+    <!-- Carrocería de cabina de alta visibilidad -->
+    <path d="M 108 18 L 145 18 L 165 38 L 169 62 L 108 62 Z" fill="url(#yellowGrad2)" stroke="#b7950b" stroke-width="1.5" stroke-linejoin="round"/>
+
+    <!-- Visera solar protectora en el techo de la cabina -->
+    <path d="M 140 16 L 164 28 L 146 28 Z" fill="#2c3e50"/>
+
+    <!-- Parabrisas panorámico alto y angular -->
+    <path d="M 144 22 L 161 38 L 144 38 Z" fill="url(#glassGrad2)" stroke="#1a5276" stroke-width="1.2"/>
+    <!-- Ventana lateral amplia y alta -->
+    <rect x="114" y="22" width="26" height="16" rx="2" fill="url(#glassGrad2)" stroke="#1a5276" stroke-width="1.2"/>
+    <!-- Destello diagonal de cristal -->
+    <path d="M 120 23 L 128 23 L 118 36 L 115 36 Z" fill="#ffffff" opacity="0.6"/>
+
+    <!-- Barra de luces LED potente en el techo de la cabina -->
+    <rect x="130" y="13" width="22" height="4.5" rx="1.5" fill="#1c2833" stroke="#111" stroke-width="1"/>
+    <circle cx="134" cy="15" r="1.3" fill="#fff9c4"/>
+    <circle cx="138" cy="15" r="1.3" fill="#fff9c4"/>
+    <circle cx="142" cy="15" r="1.3" fill="#fff9c4"/>
+    <circle cx="146" cy="15" r="1.3" fill="#fff9c4"/>
+    <circle cx="150" cy="15" r="1.3" fill="#fff9c4"/>
+
+    <!-- Faro frontal xenón angular -->
+    <path d="M 166 49 L 170 50 L 170 57 L 165 57 Z" fill="#ffffff" stroke="#f39c12" stroke-width="1"/>
+    <rect x="167" y="51" width="3" height="5" fill="#fffde7"/>
+
+    <!-- Parachoques delantero reforzado con cabrestante de rescate -->
+    <path d="M 166 54 L 176 58 L 176 68 L 164 68 Z" fill="#2c3e50" stroke="#17202a" stroke-width="1.5"/>
+
+    <!-- Luz trasera -->
+    <rect x="19" y="46" width="3" height="8" rx="1" fill="#e74c3c" stroke="#922b21" stroke-width="0.8"/>
+
+    <!-- Espejo retrovisor grande de expedición -->
+    <rect x="142" y="28" width="3.5" height="9" rx="1" fill="#1c2833"/>
+    <line x1="140" y1="33" x2="142" y2="33" stroke="#1c2833" stroke-width="1.5"/>
+  </g>
+</svg>

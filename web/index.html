@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+    <title>Max Gold Black - Exploración y Petróleo</title>
+    <style>
+        body {
+            touch-action: none;
+            margin: 0;
+            border: 0 none;
+            padding: 0;
+            text-align: center;
+            background-color: #1a0f07;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        #canvas {
+            display: block;
+            margin: 0 auto;
+            width: 100%;
+            height: 100%;
+        }
+        #canvas:focus {
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <!-- Firebase SDK CDN Modular (Opción 1: Sin herramientas de compilación, 100% nativo para Web) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-analytics.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js";
+
+        // Configuración de Firebase para Max Gold Black
+        const firebaseConfig = {
+            apiKey: "AIzaSyBUzF2MSfzmBPxPC2ILBlXhuT4k-4rmh9A",
+            authDomain: "maxcoldblack.firebaseapp.com",
+            projectId: "maxcoldblack",
+            storageBucket: "maxcoldblack.firebasestorage.app",
+            messagingSenderId: "755049366986",
+            appId: "1:755049366986:web:9d28edae0707fa6423bb33",
+            measurementId: "G-H8LS6D0P3K"
+        };
+
+        // Inicializar Firebase
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const db = getFirestore(app);
+
+        console.log("[Firebase] Conectado exitosamente al proyecto maxcoldblack");
+
+        // Funciones puente con Godot Engine (vía JavaScriptBridge)
+        window.savePlayerDataToFirebase = async function(playerId, data) {
+            try {
+                const playerRef = doc(db, "jugadores", playerId);
+                await setDoc(playerRef, data, { merge: true });
+                console.log("[Firebase Web] Sincronizado en vivo para jugador:", playerId, data);
+            } catch (error) {
+                console.warn("[Firebase Web] Error al sincronizar en Firestore:", error);
+            }
+        };
+
+        window.loadPlayerDataFromFirebase = function(playerId) {
+            try {
+                const playerRef = doc(db, "jugadores", playerId);
+                // Escuchador en vivo instantáneo (onSnapshot)
+                onSnapshot(playerRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        console.log("[Firebase Web] Actualización en tiempo real recibida:", data);
+                    }
+                });
+            } catch (error) {
+                console.warn("[Firebase Web] Error al escuchar cambios:", error);
+            }
+        };
+    </script>
+</body>
+</html>

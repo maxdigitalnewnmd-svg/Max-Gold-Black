@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 40" width="60" height="40">
+  <defs>
+    <!-- Gradiente de acero cromado para pistones hidráulicos -->
+    <linearGradient id="pistonChrome" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#bdc3c7"/>
+      <stop offset="40%" stop-color="#ffffff"/>
+      <stop offset="70%" stop-color="#95a5a6"/>
+      <stop offset="100%" stop-color="#7f8c8d"/>
+    </linearGradient>
+    <!-- Acero industrial de la placa base -->
+    <linearGradient id="plateSteel" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ecf0f1"/>
+      <stop offset="40%" stop-color="#bdc3c7"/>
+      <stop offset="100%" stop-color="#7f8c8d"/>
+    </linearGradient>
+  </defs>
+
+  <g>
+    <!-- Cilindros y vástagos hidráulicos dobles verticales -->
+    <!-- Vástago izquierdo -->
+    <rect x="15" y="2" width="7" height="26" rx="1.5" fill="url(#pistonChrome)" stroke="#34495e" stroke-width="1"/>
+    <!-- Vástago derecho -->
+    <rect x="38" y="2" width="7" height="26" rx="1.5" fill="url(#pistonChrome)" stroke="#34495e" stroke-width="1"/>
+
+    <!-- Cabezal de presión superior -->
+    <rect x="11" y="0" width="38" height="5" rx="1.5" fill="#34495e" stroke="#1c2833" stroke-width="1"/>
+
+    <!-- Guías hidráulicas intermedias con amortiguadores -->
+    <rect x="13" y="16" width="11" height="6" rx="1" fill="#2c3e50"/>
+    <rect x="36" y="16" width="11" height="6" rx="1" fill="#2c3e50"/>
+
+    <!-- Gran Placa Vibradora Base (Pesada de impacto sísmico) -->
+    <!-- Base intermedia reforzada -->
+    <polygon points="6,27 54,27 50,33 10,33" fill="#95a5a6" stroke="#2c3e50" stroke-width="1"/>
+
+    <!-- Almohadilla / Zapara vibradora principal que toca el suelo -->
+    <rect x="4" y="32" width="52" height="7" rx="2" fill="url(#plateSteel)" stroke="#2c3e50" stroke-width="1.5"/>
+    <!-- Franja de advertencia de seguridad reflectante -->
+    <line x1="8" y1="35.5" x2="52" y2="35.5" stroke="#e67e22" stroke-width="2.5" stroke-dasharray="6,4"/>
+  </g>
+</svg>

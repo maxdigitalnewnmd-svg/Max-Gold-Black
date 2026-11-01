@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <filter id="gold-glow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#5c3800" flood-opacity="0.7"/>
+    </filter>
+  </defs>
+  <g filter="url(#gold-glow)">
+    <!-- Base de veta de cuarzo/roca portadora -->
+    <polygon points="20,55 38,28 75,22 102,45 92,88 55,102 24,90" fill="#3a2e28" stroke="#1f1814" stroke-width="2" stroke-linejoin="round"/>
+    
+    <!-- Pepita y veta de oro puro incrustada -->
+    <path d="M 32 60 C 35 40, 50 30, 68 35 C 85 40, 95 55, 88 75 C 80 92, 55 98, 40 88 C 30 80, 28 70, 32 60 Z" fill="#ffb300" stroke="#b26a00" stroke-width="2" stroke-linejoin="round"/>
+    
+    <!-- Facetas doradas brillantes -->
+    <polygon points="45,40 68,35 62,55 42,52" fill="#ffd54f"/>
+    <polygon points="68,35 85,45 78,65 62,55" fill="#ffca28"/>
+    <polygon points="42,52 62,55 58,78 38,72" fill="#ffc107"/>
+    <polygon points="62,55 78,65 72,82 58,78" fill="#ffa000"/>
+    <polygon points="38,72 58,78 48,88 35,80" fill="#ff8f00"/>
+
+    <!-- Pepitas menores de oro esparcidas -->
+    <circle cx="28" cy="38" r="6" fill="#ffd54f" stroke="#b26a00" stroke-width="1.5"/>
+    <circle cx="88" cy="38" r="7" fill="#ffd54f" stroke="#b26a00" stroke-width="1.5"/>
+    <circle cx="82" cy="92" r="5" fill="#ffb300" stroke="#b26a00" stroke-width="1.2"/>
+
+    <!-- Destellos especulares brillantes de oro -->
+    <polygon points="52,42 54,46 58,47 54,48 52,52 50,48 46,47 50,46" fill="#ffffff"/>
+    <polygon points="76,50 77,53 80,54 77,55 76,58 75,55 72,54 75,53" fill="#ffffff"/>
+    <circle cx="30" cy="36" r="2" fill="#ffffff"/>
+  </g>
+</svg>

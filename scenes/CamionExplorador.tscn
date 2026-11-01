@@ -1,0 +1,78 @@
+[gd_scene load_steps=7 format=3 uid="uid://b8x0km5p7e1y3"]
+
+[ext_resource type="Script" path="res://scripts/camion_explorador.gd" id="1_truck_script"]
+[ext_resource type="Texture2D" path="res://assets/camion_cuerpo_vibro.svg" id="2_body_svg"]
+[ext_resource type="Texture2D" path="res://assets/camion_placa.svg" id="3_plate_svg"]
+[ext_resource type="Texture2D" path="res://assets/camion_rueda_vibro.svg" id="4_wheel_svg"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_truck"]
+size = Vector2(148, 70)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hud"]
+bg_color = Color(0.101961, 0.129412, 0.168627, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.85, 1, 0.8)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+expand_margin_left = 8.0
+expand_margin_top = 3.0
+expand_margin_right = 8.0
+expand_margin_bottom = 3.0
+
+[node name="CamionExplorador" type="CharacterBody2D"]
+z_index = 2
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("1_truck_script")
+speed = 120.0
+move_duration = 3.5
+lower_duration = 0.7
+probe_duration = 1.8
+raise_duration = 0.7
+result_duration = 2.0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -35)
+shape = SubResource("RectangleShape2D_truck")
+
+[node name="Visuals" type="Node2D" parent="."]
+
+[node name="VibratorPlate" type="Sprite2D" parent="Visuals"]
+position = Vector2(0, -26)
+scale = Vector2(0.82, 0.82)
+texture = ExtResource("3_plate_svg")
+
+[node name="BodySprite" type="Sprite2D" parent="Visuals"]
+position = Vector2(0, -35.3)
+scale = Vector2(0.82, 0.82)
+texture = ExtResource("2_body_svg")
+
+[node name="WheelRear" type="Sprite2D" parent="Visuals"]
+position = Vector2(-41.8, -21.3)
+scale = Vector2(0.82, 0.82)
+texture = ExtResource("4_wheel_svg")
+
+[node name="WheelFront" type="Sprite2D" parent="Visuals"]
+position = Vector2(41.8, -21.3)
+scale = Vector2(0.82, 0.82)
+texture = ExtResource("4_wheel_svg")
+
+[node name="AlertLabel" type="Label" parent="."]
+visible = false
+z_index = 5
+offset_left = -115.0
+offset_top = -105.0
+offset_right = 115.0
+offset_bottom = -77.0
+theme_override_colors/font_outline_color = Color(0.05, 0.05, 0.05, 0.95)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_hud")
+text = "¡Petróleo detectado!"
+horizontal_alignment = 1
+vertical_alignment = 1

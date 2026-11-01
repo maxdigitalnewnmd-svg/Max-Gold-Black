@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 110" width="200" height="110">
+  <defs>
+    <filter id="t2Shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="#0a0705" flood-opacity="0.65"/>
+    </filter>
+    <linearGradient id="t2Blue" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3498db"/>
+      <stop offset="45%" stop-color="#2980b9"/>
+      <stop offset="100%" stop-color="#1b4f72"/>
+    </linearGradient>
+    <linearGradient id="t2White" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="60%" stop-color="#eaeded"/>
+      <stop offset="100%" stop-color="#bdc3c7"/>
+    </linearGradient>
+  </defs>
+
+  <g filter="url(#t2Shadow)">
+    <!-- CHASIS REFORZADO TIER 2: 6X6 CON DOBLE EJE TRASERO -->
+    <rect x="18" y="62" width="166" height="11" rx="3" fill="#2c3e50" stroke="#17202a" stroke-width="1.5"/>
+
+    <!-- Pasos de rueda dobles traseros y delantero -->
+    <path d="M 16 72 C 16 50, 64 50, 64 72 Z" fill="#141c24"/>
+    <path d="M 64 72 C 64 50, 108 50, 108 72 Z" fill="#141c24"/>
+    <path d="M 144 72 C 144 50, 192 50, 192 72 Z" fill="#141c24"/>
+
+    <!-- PÓRTICO HIDRÁULICO DOBLE TIER 2 (Doble potencia de impacto) -->
+    <rect x="110" y="34" width="8" height="38" rx="2" fill="url(#t2White)" stroke="#7f8c8d" stroke-width="1.2"/>
+    <rect x="136" y="34" width="8" height="38" rx="2" fill="url(#t2White)" stroke="#7f8c8d" stroke-width="1.2"/>
+    <rect x="106" y="32" width="42" height="7" rx="2" fill="#e67e22" stroke="#b95e09" stroke-width="1.2"/>
+    <line x1="114" y1="38" x2="114" y2="60" stroke="#f1c40f" stroke-width="2.5"/>
+    <line x1="140" y1="38" x2="140" y2="60" stroke="#f1c40f" stroke-width="2.5"/>
+
+    <!-- MÓDULO TRASERO CIENTÍFICO (Azul Cobalto y Blanco) -->
+    <path d="M 18 24 L 106 24 L 106 62 L 18 62 Z" fill="url(#t2Blue)" stroke="#1a5276" stroke-width="1.5"/>
+    <rect x="18" y="44" width="88" height="8" fill="url(#t2White)"/>
+    <text x="32" y="50" font-family="sans-serif" font-size="6" font-weight="bold" fill="#1b4f72">SEISMIC T2</text>
+
+    <!-- Radar auxiliar giratorio en el techo -->
+    <circle cx="36" cy="18" r="6" fill="#f1c40f" stroke="#b7950b" stroke-width="1"/>
+    <line x1="36" y1="18" x2="42" y2="12" stroke="#2c3e50" stroke-width="2"/>
+
+    <!-- Generador de pulsos de alta densidad -->
+    <rect x="62" y="28" width="38" height="15" rx="2" fill="#2c3e50" stroke="#1c2833" stroke-width="1"/>
+    <circle cx="72" cy="35" r="3" fill="#2ecc71"/>
+    <circle cx="82" cy="35" r="3" fill="#2ecc71"/>
+    <circle cx="92" cy="35" r="3" fill="#2ecc71"/>
+
+    <!-- CABINA TIER 2 AERODINÁMICA MODERNA -->
+    <path d="M 144 14 L 180 14 L 192 36 L 196 62 L 144 62 Z" fill="url(#t2White)" stroke="#95a5a6" stroke-width="1.5"/>
+    <rect x="144" y="38" width="50" height="6" fill="url(#t2Blue)"/>
+
+    <!-- Parabrisas panorámico tintado -->
+    <path d="M 166 18 L 186 36 L 166 36 Z" fill="#2980b9" stroke="#1b4f72" stroke-width="1.2"/>
+    <rect x="148" y="18" width="16" height="18" rx="2" fill="#2980b9" stroke="#1b4f72" stroke-width="1.2"/>
+
+    <!-- Barra de focos halógenos y parachoques todoterreno -->
+    <rect x="154" y="10" width="22" height="4" rx="1.5" fill="#f39c12"/>
+    <path d="M 194 54 L 202 54 L 202 66 L 190 66" stroke="#2c3e50" stroke-width="3" fill="none"/>
+  </g>
+</svg>
