@@ -4,7 +4,9 @@ const { URL } = require('url');
 
 const PORT = process.env.PORT || 3000;
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'maxcoldblack';
+const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || 'AIzaSyBUzF2MSfzmBPxPC2ILBlXhuT4k-4rmh9A';
 const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+const FIREBASE_AUTH_BASE = 'https://identitytoolkit.googleapis.com/v1/accounts';
 
 // Clave simétrica de 256 bits para encriptación total End-to-End con Godot / Telegram
 const ENCRYPTION_KEY_STR = process.env.ENCRYPTION_KEY || 'M4xG0ldBl4ckTatacoaDesert2026Key';
@@ -165,8 +167,6 @@ function getRequestBody(req) {
 // ----------------- GOBERNANZA DE USUARIOS Y VALIDACIÓN DEL CEO -----------------
 async function getOrSyncUser(uid, candidateData = {}) {
   const isCeoUid = (uid === CEO_CONFIG.uid);
-
-  // Intentar leer el usuario desde la colección oficial 'Usuarios'
   const url = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
   const res = await fetch(url);
 
@@ -177,7 +177,6 @@ async function getOrSyncUser(uid, candidateData = {}) {
     let fechaCreacion = extractVal(fields.fecha_creacion);
     if (!fechaCreacion) {
       fechaCreacion = isCeoUid ? CEO_CONFIG.fecha_creacion : (doc.createTime || new Date().toISOString());
-      // Guardar fecha_creacion para que sea inmutable
       await fetch(`${url}?updateMask.fieldPaths=fecha_creacion`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -279,6 +278,98 @@ async function getOrSyncUser(uid, candidateData = {}) {
     esmeralda: 0,
     es_ceo: false,
     inmutable: true
+  };
+}
+
+// ----------------- AUTENTICACIÓN FIREBASE AUTH VÍA RENDER -----------------
+async function handleFirebaseAuthLogin(email, password) {
+  const url = `${FIREBASE_AUTH_BASE}:signInWithPassword?key=${FIREBASE_API_KEY}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, returnSecureToken: true })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    const errorMsg = data.error?.message || 'ERROR_AUTH';
+    if (errorMsg === 'EMAIL_NOT_FOUND') {
+      return { success: false, code: 'EMAIL_NOT_FOUND', error: 'El usuario no existe. Debe crear una cuenta para ingresar.' };
+    }
+    if (errorMsg === 'INVALID_PASSWORD' || errorMsg === 'INVALID_LOGIN_CREDENTIALS') {
+      return { success: false, code: 'INVALID_PASSWORD', error: 'Contraseña o credenciales incorrectas.' };
+    }
+    if (errorMsg === 'USER_DISABLED') {
+      return { success: false, code: 'USER_DISABLED', error: 'Esta cuenta ha sido inhabilitada por la dirección.' };
+    }
+    if (errorMsg.includes('TOO_MANY_ATTEMPTS')) {
+      return { success: false, code: 'TOO_MANY_ATTEMPTS', error: 'Demasiados intentos fallidos. Intente más tarde.' };
+    }
+    return { success: false, code: errorMsg, error: 'Error al iniciar sesión: verifique sus credenciales.' };
+  }
+
+  const uid = data.localId;
+  const userProfile = await getOrSyncUser(uid, { correo: email });
+
+  return {
+    success: true,
+    token: data.idToken,
+    refreshToken: data.refreshToken,
+    expiresIn: data.expiresIn,
+    usuario: userProfile,
+    mensaje: userProfile.es_ceo
+      ? '¡Bienvenido de nuevo, Señor CEO Dramax! Sesión corporativa iniciada.'
+      : `¡Bienvenido de nuevo, ${userProfile.username}! Sesión iniciada con éxito.`
+  };
+}
+
+async function handleFirebaseAuthRegister(email, password, username) {
+  // Prohibición estricta de multicuentas y suplantación del CEO
+  if (email.toLowerCase() === CEO_CONFIG.correo.toLowerCase()) {
+    return {
+      success: false,
+      code: 'CEO_EMAIL_RESERVED',
+      error: 'Este correo institucional está reservado exclusivamente para la cuenta fundacional del CEO.'
+    };
+  }
+
+  const url = `${FIREBASE_AUTH_BASE}:signUp?key=${FIREBASE_API_KEY}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, returnSecureToken: true })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    const errorMsg = data.error?.message || 'ERROR_REGISTER';
+    if (errorMsg.includes('EMAIL_EXISTS')) {
+      return {
+        success: false,
+        code: 'EMAIL_EXISTS',
+        error: 'Este correo ya está registrado en la empresa. Inicie sesión directamente; las multicuentas están estrictamente prohibidas.'
+      };
+    }
+    if (errorMsg.includes('WEAK_PASSWORD')) {
+      return { success: false, code: 'WEAK_PASSWORD', error: 'La contraseña debe tener al menos 6 caracteres.' };
+    }
+    if (errorMsg.includes('INVALID_EMAIL')) {
+      return { success: false, code: 'INVALID_EMAIL', error: 'El formato de correo electrónico es inválido.' };
+    }
+    return { success: false, code: errorMsg, error: 'No se pudo crear la cuenta: verifique los datos ingresados.' };
+  }
+
+  const uid = data.localId;
+  const safeUsername = username && username.trim().length > 0 ? username.trim() : email.split('@')[0];
+  const userProfile = await getOrSyncUser(uid, { correo: email, username: safeUsername });
+
+  return {
+    success: true,
+    token: data.idToken,
+    refreshToken: data.refreshToken,
+    expiresIn: data.expiresIn,
+    usuario: userProfile,
+    mensaje: `¡Cuenta creada exitosamente! Bienvenido al equipo de exploración de Max Gold Black, ${safeUsername}.`
   };
 }
 
@@ -409,6 +500,7 @@ const server = http.createServer(async (req, res) => {
       server: 'Max Gold Black API Gateway (Render)',
       middleware: 'Intermediario Obligatorio Activo',
       ceo: 'Dramax (QEMLQtpeFYgfXmZL8eXQSzlMypg2)',
+      auth: 'Firebase Auth API Gateway Activo',
       security: 'End-to-End AES-256-CBC + HMAC-SHA256',
       time: new Date()
     }, true);
@@ -437,6 +529,57 @@ const server = http.createServer(async (req, res) => {
       }
 
       const action = requestData.action;
+
+      // --- ACCIÓN: AUTENTICACIÓN - INICIAR SESIÓN (AUTH_LOGIN) ---
+      if (action === 'AUTH_LOGIN') {
+        const email = (requestData.email || '').trim();
+        const password = requestData.password || '';
+
+        if (!email || !password) {
+          return sendEncryptedResponse(res, 400, {
+            success: false,
+            error: 'Debe ingresar su correo electrónico y contraseña.'
+          });
+        }
+
+        const loginResult = await handleFirebaseAuthLogin(email, password);
+        const httpStatus = loginResult.success ? 200 : 400;
+        return sendEncryptedResponse(res, httpStatus, loginResult);
+      }
+
+      // --- ACCIÓN: AUTENTICACIÓN - REGISTRARSE (AUTH_REGISTER) ---
+      if (action === 'AUTH_REGISTER') {
+        const email = (requestData.email || '').trim();
+        const password = requestData.password || '';
+        const confirmPassword = requestData.confirm_password || '';
+        const username = (requestData.username || '').trim();
+
+        if (!email || !password) {
+          return sendEncryptedResponse(res, 400, {
+            success: false,
+            error: 'Todos los campos son obligatorios para el registro.'
+          });
+        }
+
+        if (password.length < 6) {
+          return sendEncryptedResponse(res, 400, {
+            success: false,
+            error: 'La contraseña debe contener un mínimo de 6 caracteres.'
+          });
+        }
+
+        if (password !== confirmPassword) {
+          return sendEncryptedResponse(res, 400, {
+            success: false,
+            error: 'Las contraseñas no coinciden. Por favor verifíquelas.'
+          });
+        }
+
+        const registerResult = await handleFirebaseAuthRegister(email, password, username);
+        const httpStatus = registerResult.success ? 200 : 400;
+        return sendEncryptedResponse(res, httpStatus, registerResult);
+      }
+
       const uid = requestData.uid || requestData.player_id || CEO_CONFIG.uid;
 
       // VALIDACIÓN ANTI-SUPLANTACIÓN DEL CEO
@@ -535,10 +678,8 @@ const server = http.createServer(async (req, res) => {
         const minKey = (requestData.mineral || 'COAL').toUpperCase();
         const cantidad = Math.max(1, Math.floor(requestData.cantidad || 1));
 
-        // Obtener y verificar usuario oficial
         const user = await getOrSyncUser(uid, requestData);
 
-        // Límite Franklin: Solo minerales autorizados
         const validos = ['COAL', 'GOLD', 'EMERALD'];
         if (!validos.includes(minKey)) {
           return sendEncryptedResponse(res, 400, {
@@ -554,7 +695,6 @@ const server = http.createServer(async (req, res) => {
         const montoTotal = precioOficial * cantidad;
         const fondosDisponibles = gestor.boveda[minKey] || 0;
 
-        // Límite Max Drag: Custodia de liquidez
         if (fondosDisponibles < montoTotal) {
           const mensajeLiquidez = user.es_ceo
             ? `Estimado CEO ${user.username}, la bóveda corporativa se encuentra temporalmente sin liquidez para esta transacción. Se requiere orden de capitalización.`
@@ -570,7 +710,6 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        // Emisión de ticket firmado inviolable
         const payloadTicket = {
           tokenId: `VB_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`,
           mineral: minKey,
@@ -609,7 +748,7 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      // --- ACCIÓN: LIQUIDAR TRANSACCIÓN SEGURA EN FIRESTORE (USUARIOS + BOVEDA) ---
+      // --- ACCIÓN: LIQUIDAR TRANSACCIÓN SEGURA EN FIRESTORE ---
       if (action === 'LIQUIDAR_TRANSACCION') {
         const token = requestData.token;
         const verification = verifyAuthorizationToken(token);
@@ -645,7 +784,7 @@ const server = http.createServer(async (req, res) => {
           })
         });
 
-        // 2. Acreditar Dragcoins en la colección oficial 'Usuarios/{uid}'
+        // 2. Acreditar Dragcoins en Usuarios/{uid}
         const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
         const userRes = await fetch(userUrl);
         let userCoins = 0;
@@ -669,7 +808,7 @@ const server = http.createServer(async (req, res) => {
           })
         });
 
-        // 3. Sincronizar también en jugadores/{uid} para soporte integral
+        // 3. Sincronizar en jugadores/{uid}
         await fetch(`${FIRESTORE_BASE_URL}/jugadores/${uid}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -726,5 +865,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`[Max Gold Black] Middleware API Gateway de Render activo en puerto ${PORT}`);
-  console.log(`[Seguridad] CEO Dramax verificado. Gobernanza de Usuarios y Fecha de Creación Activa.`);
+  console.log(`[Seguridad] Firebase Auth Gateway y Prevención de Multicuentas Activa.`);
 });

@@ -21,6 +21,9 @@ static var instance: Node = null
 
 const RENDER_GATEWAY_URL: String = "https://max-gold-black-api.onrender.com"
 const SAVE_PATH_USER_ID: String = "user://firebase_user_id.dat"
+const SAVE_PATH_SESSION: String = "user://session_auth.json"
+
+var has_session: bool = false
 
 # Identidad Oficial del CEO Fundador (Colección 'Usuarios' en Firestore)
 var current_user_uid: String = "QEMLQtpeFYgfXmZL8eXQSzlMypg2"
@@ -85,19 +88,90 @@ func _ready() -> void:
 	consultar_todo_en_vivo()
 
 func _init_player_id() -> void:
-	if FileAccess.file_exists(SAVE_PATH_USER_ID):
-		var file = FileAccess.open(SAVE_PATH_USER_ID, FileAccess.READ)
-		if file:
-			var saved_id = file.get_as_text().strip_edges()
-			if saved_id.length() > 0:
-				current_user_uid = saved_id
+	# Cargar sesión persistente si existe
+	if FileAccess.file_exists(SAVE_PATH_SESSION):
+		var s_file = FileAccess.open(SAVE_PATH_SESSION, FileAccess.READ)
+		if s_file:
+			var txt = s_file.get_as_text().strip_edges()
+			s_file.close()
+			var json = JSON.new()
+			if json.parse(txt) == OK and json.data is Dictionary:
+				var s_data: Dictionary = json.data
+				current_user_uid = s_data.get("uid", current_user_uid)
+				current_username = s_data.get("username", current_username)
+				current_email = s_data.get("correo", current_email)
+				current_role = s_data.get("tipo", current_role)
+				has_session = true
 				return
-	# Si no hay guardado, usamos por defecto la cuenta oficial del CEO
-	current_user_uid = "QEMLQtpeFYgfXmZL8eXQSzlMypg2"
-	var file_write = FileAccess.open(SAVE_PATH_USER_ID, FileAccess.WRITE)
-	if file_write:
-		file_write.store_string(current_user_uid)
-		file_write.close()
+
+	has_session = false
+
+func has_active_session() -> bool:
+	return has_session
+
+func save_session(user_dict: Dictionary) -> void:
+	has_session = true
+	var file = FileAccess.open(SAVE_PATH_SESSION, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(user_dict))
+		file.close()
+
+func clear_session() -> void:
+	has_session = false
+	if FileAccess.file_exists(SAVE_PATH_SESSION):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH_SESSION))
+
+func iniciar_sesion_render(email: String, pass: String, callback: Callable) -> void:
+	var payload = {
+		"action": "AUTH_LOGIN",
+		"email": email,
+		"password": pass
+	}
+	post_encrypted_gateway(payload, func(res: Dictionary):
+		if res.get("success", false) and res.has("usuario"):
+			var u: Dictionary = res["usuario"]
+			current_user_uid = u.get("uid", current_user_uid)
+			current_username = u.get("username", current_username)
+			current_email = u.get("correo", current_email)
+			current_role = u.get("tipo", current_role)
+			user_profile = u
+			save_session({
+				"uid": current_user_uid,
+				"username": current_username,
+				"correo": current_email,
+				"tipo": current_role,
+				"token": res.get("token", "")
+			})
+			user_profile_updated.emit(user_profile)
+		callback.call(res)
+	)
+
+func registrarse_render(email: String, pass: String, confirm_pass: String, username: String, callback: Callable) -> void:
+	var payload = {
+		"action": "AUTH_REGISTER",
+		"email": email,
+		"password": pass,
+		"confirm_password": confirm_pass,
+		"username": username
+	}
+	post_encrypted_gateway(payload, func(res: Dictionary):
+		if res.get("success", false) and res.has("usuario"):
+			var u: Dictionary = res["usuario"]
+			current_user_uid = u.get("uid", current_user_uid)
+			current_username = u.get("username", current_username)
+			current_email = u.get("correo", current_email)
+			current_role = u.get("tipo", current_role)
+			user_profile = u
+			save_session({
+				"uid": current_user_uid,
+				"username": current_username,
+				"correo": current_email,
+				"tipo": current_role,
+				"token": res.get("token", "")
+			})
+			user_profile_updated.emit(user_profile)
+		callback.call(res)
+	)
 
 # ----------------- PUENTE DE SEGURIDAD ENCRIPTADO (RENDER GATEWAY) -----------------
 func post_encrypted_gateway(action_payload: Dictionary, callback: Callable) -> void:

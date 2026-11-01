@@ -100,6 +100,7 @@ const FOSSIL_SVG_PATHS: Array[String] = [
 
 # Modal Comprador de Recursos (Precio dinámico fluctuante)
 @onready var comprador_modal: Control = $HUD/CompradorModal
+@onready var auth_modal: Control = $HUD/AuthModal
 
 # Economía sincronizada estrictamente en 0 con GestorJuego
 var coins: int:
@@ -148,6 +149,7 @@ func _ready() -> void:
 	_generate_initial_world()
 	_center_camera()
 	_setup_hud()
+	_setup_auth_flow()
 
 func _generate_initial_world() -> void:
 	min_generated_col = -35
@@ -195,6 +197,39 @@ func _setup_hud() -> void:
 		if firebase_mgr.has_signal("user_profile_updated"):
 			firebase_mgr.user_profile_updated.connect(_on_user_profile_updated)
 	_update_taller_cards()
+
+func _setup_auth_flow() -> void:
+	if not is_instance_valid(auth_modal):
+		return
+	
+	if auth_modal.has_signal("auth_success"):
+		auth_modal.auth_success.connect(_on_auth_success)
+	
+	var firebase_mgr = get_node_or_null("FirebaseManager")
+	var has_session: bool = false
+	if firebase_mgr != null and firebase_mgr.has_method("has_active_session"):
+		has_session = firebase_mgr.has_active_session()
+	
+	if not has_session:
+		auth_modal.visible = true
+		if is_instance_valid(camion_explorador):
+			camion_explorador.visible = false
+			camion_explorador.pause_exploration()
+	else:
+		auth_modal.visible = false
+		if is_instance_valid(camion_explorador):
+			camion_explorador.visible = true
+			camion_explorador.resume_exploration()
+		_update_user_profile_card()
+
+func _on_auth_success(usuario: Dictionary) -> void:
+	print("[Mundo] Sesión verificada por Render para: %s (%s)" % [usuario.get("username", ""), usuario.get("tipo", "")])
+	if is_instance_valid(auth_modal):
+		auth_modal.visible = false
+	if is_instance_valid(camion_explorador):
+		camion_explorador.visible = true
+		camion_explorador.resume_exploration()
+	_update_user_profile_card()
 
 func _set_modal_tab(tab_idx: int) -> void:
 	var is_taller = (tab_idx == 0)

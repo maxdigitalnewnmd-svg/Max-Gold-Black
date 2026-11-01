@@ -1,4 +1,4 @@
-[gd_scene load_steps=28 format=3 uid="uid://d3yq8o0k2b1w2"]
+[gd_scene load_steps=29 format=3 uid="uid://d3yq8o0k2b1w2"]
 
 [ext_resource type="Script" path="res://scripts/mundo.gd" id="1_mundo"]
 [ext_resource type="Texture2D" path="res://assets/tatacoa_surface.svg" id="2_surface_svg"]
@@ -14,6 +14,7 @@
 [ext_resource type="Texture2D" path="res://assets/camion_cuerpo_t2.svg" id="12_truck_t2_tex"]
 [ext_resource type="Texture2D" path="res://assets/camion_cuerpo_t3.svg" id="13_truck_t3_tex"]
 [ext_resource type="Texture2D" path="res://assets/camion_cuerpo_t4.svg" id="14_truck_t4_tex"]
+[ext_resource type="PackedScene" path="res://scenes/AuthModal.tscn" id="15_auth_modal_scene"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_item"]
 bg_color = Color(0.08, 0.1, 0.14, 0.92)
@@ -835,3 +836,6 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_cancelar")
 text = "✖ Cancelar"
+
+[node name="AuthModal" parent="HUD" instance=ExtResource("15_auth_modal_scene")]
+visible = false

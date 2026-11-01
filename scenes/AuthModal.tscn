@@ -1,0 +1,301 @@
+[gd_scene load_steps=5 format=3 uid="uid://c6a8f1n2m4q8p"]
+
+[ext_resource type="Script" path="res://scripts/auth_modal.gd" id="1_auth_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_auth_card"]
+bg_color = Color(0.06, 0.08, 0.12, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.9, 0.75, 0.2, 0.95)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(0, 0, 0, 0.75)
+shadow_size = 20
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_gold"]
+bg_color = Color(0.18, 0.14, 0.06, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.85, 0.3, 0.9)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_cyan"]
+bg_color = Color(0.06, 0.14, 0.18, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.9, 0.95, 0.9)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="AuthModal" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_auth_script")
+
+[node name="DimBackdrop" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.04, 0.06, 0.09, 0.55)
+
+[node name="AuthCard" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -245.0
+offset_right = 260.0
+offset_bottom = 245.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_auth_card")
+
+[node name="Margin" type="MarginContainer" parent="AuthCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 22
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 22
+theme_override_constants/margin_bottom = 18
+
+[node name="VBox" type="VBoxContainer" parent="AuthCard/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ViewWelcome" type="VBoxContainer" parent="AuthCard/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="GameTitle" type="Label" parent="AuthCard/Margin/VBox/ViewWelcome"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 24
+text = "🌵 MAX GOLD BLACK"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="AuthCard/Margin/VBox/ViewWelcome"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 0.9)
+theme_override_font_sizes/font_size = 11
+text = "PROSPECCIÓN SÍSMICA & MINERÍA CORPORATIVA"
+horizontal_alignment = 1
+
+[node name="HSep1" type="HSeparator" parent="AuthCard/Margin/VBox/ViewWelcome"]
+layout_mode = 2
+
+[node name="Desc" type="Label" parent="AuthCard/Margin/VBox/ViewWelcome"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 0.95)
+theme_override_font_sizes/font_size = 13
+text = "Bienvenido a la expedición del Desierto de la Tatacoa. Por normativa de seguridad corporativa, inicie sesión o regístrese para autorizar su camioneta de exploración."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Spacer" type="Control" parent="AuthCard/Margin/VBox/ViewWelcome"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="BtnGoToLogin" type="Button" parent="AuthCard/Margin/VBox/ViewWelcome"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.35, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_gold")
+text = "🔑 Iniciar Sesión"
+
+[node name="BtnGoToRegister" type="Button" parent="AuthCard/Margin/VBox/ViewWelcome"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 0.95, 0.95, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_cyan")
+text = "📝 Regístrate"
+
+[node name="SecurityBadge" type="Label" parent="AuthCard/Margin/VBox/ViewWelcome"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.95, 0.45, 0.85)
+theme_override_font_sizes/font_size = 11
+text = "🛡️ Autenticado & Blindado por Render Gateway"
+horizontal_alignment = 1
+
+[node name="ViewLogin" type="VBoxContainer" parent="AuthCard/Margin/VBox"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="AuthCard/Margin/VBox/ViewLogin"]
+layout_mode = 2
+
+[node name="BtnBackLogin" type="Button" parent="AuthCard/Margin/VBox/ViewLogin/Header"]
+custom_minimum_size = Vector2(85, 32)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "⬅ Volver"
+
+[node name="TitleLogin" type="Label" parent="AuthCard/Margin/VBox/ViewLogin/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 16
+text = "🔑 INICIAR SESIÓN"
+horizontal_alignment = 1
+
+[node name="HSep2" type="HSeparator" parent="AuthCard/Margin/VBox/ViewLogin"]
+layout_mode = 2
+
+[node name="LblEmail" type="Label" parent="AuthCard/Margin/VBox/ViewLogin"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "📧 Correo Electrónico:"
+
+[node name="TxtLoginEmail" type="LineEdit" parent="AuthCard/Margin/VBox/ViewLogin"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+placeholder_text = "usuario@correo.com"
+
+[node name="LblPass" type="Label" parent="AuthCard/Margin/VBox/ViewLogin"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "🔒 Contraseña:"
+
+[node name="TxtLoginPass" type="LineEdit" parent="AuthCard/Margin/VBox/ViewLogin"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+placeholder_text = "••••••••"
+secret = true
+
+[node name="LblStatusLogin" type="Label" parent="AuthCard/Margin/VBox/ViewLogin"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="BtnDoLogin" type="Button" parent="AuthCard/Margin/VBox/ViewLogin"]
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.95, 0.45, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_gold")
+text = "▶ INICIAR"
+
+[node name="ViewRegister" type="VBoxContainer" parent="AuthCard/Margin/VBox"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="HBoxContainer" parent="AuthCard/Margin/VBox/ViewRegister"]
+layout_mode = 2
+
+[node name="BtnBackRegister" type="Button" parent="AuthCard/Margin/VBox/ViewRegister/Header"]
+custom_minimum_size = Vector2(85, 32)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "⬅ Volver"
+
+[node name="TitleRegister" type="Label" parent="AuthCard/Margin/VBox/ViewRegister/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.3, 0.95, 0.95, 1)
+theme_override_font_sizes/font_size = 16
+text = "📝 REGÍSTRATE"
+horizontal_alignment = 1
+
+[node name="HSep3" type="HSeparator" parent="AuthCard/Margin/VBox/ViewRegister"]
+layout_mode = 2
+
+[node name="LblRegUser" type="Label" parent="AuthCard/Margin/VBox/ViewRegister"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "👤 Nombre de Usuario / Alias:"
+
+[node name="TxtRegUser" type="LineEdit" parent="AuthCard/Margin/VBox/ViewRegister"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+placeholder_text = "Tu nombre de minero"
+
+[node name="LblRegEmail" type="Label" parent="AuthCard/Margin/VBox/ViewRegister"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "📧 Correo Electrónico:"
+
+[node name="TxtRegEmail" type="LineEdit" parent="AuthCard/Margin/VBox/ViewRegister"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+placeholder_text = "ejemplo@correo.com"
+
+[node name="LblRegPass" type="Label" parent="AuthCard/Margin/VBox/ViewRegister"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "🔒 Contraseña (mínimo 6 caracteres):"
+
+[node name="TxtRegPass" type="LineEdit" parent="AuthCard/Margin/VBox/ViewRegister"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+placeholder_text = "••••••••"
+secret = true
+
+[node name="LblRegConfirm" type="Label" parent="AuthCard/Margin/VBox/ViewRegister"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "🔒 Confirmar Contraseña:"
+
+[node name="TxtRegConfirm" type="LineEdit" parent="AuthCard/Margin/VBox/ViewRegister"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+placeholder_text = "••••••••"
+secret = true
+
+[node name="LblStatusRegister" type="Label" parent="AuthCard/Margin/VBox/ViewRegister"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="BtnDoRegister" type="Button" parent="AuthCard/Margin/VBox/ViewRegister"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.25, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_cyan")
+text = "✨ REGISTRARSE"
+
+[node name="Notice" type="Label" parent="AuthCard/Margin/VBox/ViewRegister"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.7, 0.5, 0.85)
+theme_override_font_sizes/font_size = 9
+text = "⚠️ Las multicuentas con el mismo correo están estrictamente prohibidas."
+horizontal_alignment = 1
