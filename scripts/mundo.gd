@@ -184,8 +184,24 @@ func _on_resource_detected(res_code: String, depth: int, column: int) -> void:
 	if res_code in ["COAL", "GOLD", "EMERALD"]:
 		if is_instance_valid(camion_explorador):
 			camion_explorador.pause_exploration()
-		if is_instance_valid(comprador_modal):
-			comprador_modal.open_for_resource(res_code)
+
+		var firebase_mgr = get_node_or_null("FirebaseManager")
+		var tier = camion_explorador.current_tier if is_instance_valid(camion_explorador) else 1
+
+		# Auditoría y validación física obligatoria con Render Gateway
+		if firebase_mgr != null and firebase_mgr.has_method("reportar_hallazgo_seguro"):
+			firebase_mgr.reportar_hallazgo_seguro(tier, res_code, func(res: Dictionary):
+				if res.get("validado", false) == true:
+					if is_instance_valid(comprador_modal):
+						comprador_modal.open_for_resource(res_code)
+				else:
+					push_warning("[Seguridad] Hallazgo bloqueado por Render Gateway: " + str(res.get("error", "")))
+					if is_instance_valid(camion_explorador):
+						camion_explorador.resume_exploration()
+			)
+		else:
+			if is_instance_valid(comprador_modal):
+				comprador_modal.open_for_resource(res_code)
 
 func _on_resource_sold(res_key: String, earned_coins: int) -> void:
 	print("[Mundo] Transacción finalizada: %s (+🪙%d). Reanudando camión..." % [res_key, earned_coins])
