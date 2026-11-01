@@ -95,26 +95,44 @@ func open_for_resource(resource_key: String) -> void:
 	if ResourceLoader.exists(cfg["image"]):
 		img_buyer.texture = load(cfg["image"])
 
-	# 3. Iniciar con Franklin
+	# 3. Iniciar con Franklin: Doble Verificación con Render
 	fase_actual = FaseModal.FRANKLIN_COTIZACION
 	close_timer = 0.0
 	_mostrar_vista_franklin()
 
-	# Franklin verifica internamente la identidad del usuario (UID, Username, Correo)
-	var uid = FirebaseManager.instance.current_user_uid if FirebaseManager.instance != null else "QEMLQtpeFYgfXmZL8eXQSzlMypg2"
-	var uname = FirebaseManager.instance.current_username if FirebaseManager.instance != null else "Dramax"
-	var urole = FirebaseManager.instance.current_role if FirebaseManager.instance != null else "CEO"
-	solicitud_actual = IAEmpresarial.franklin_generar_solicitud(current_res_key, current_price, uid)
-
-	# Diálogo natural y respetuoso según el rango institucional
-	if urole == "CEO":
-		target_dialogue_text = "¡Un honor saludarle, señor CEO %s! Noto que su prospección ha localizado %s. Actualmente cotiza a $%d por saco. Procederé con la solicitud formal para la Dirección Financiera." % [uname, mineral_name, current_price]
-	else:
-		target_dialogue_text = "¡Hola, minero %s! Noto que has extraído %s. Actualmente tiene un costo de $%d por saco. Esperemos la autorización de la Dirección Financiera para continuar." % [uname, mineral_name, current_price]
+	btn_vender.disabled = true
+	btn_vender.text = "Consultando a Render..."
+	target_dialogue_text = "Franklin Martínez: Un momento por favor... Consultando con el Gateway de Render si tienes %s registrado en tu inventario central..." % mineral_name
 	_iniciar_escritura_dialogo()
-
-	_actualizar_botones()
 	visible = true
+
+	# PASO 2: DOBLE VERIFICACIÓN DE FRANKLIN
+	if FirebaseManager.instance != null:
+		FirebaseManager.instance.franklin_verificar_mineral(current_res_key, _on_franklin_verificacion_recibida)
+	else:
+		_evaluar_auditoria_fallback()
+
+func _on_franklin_verificacion_recibida(res: Dictionary) -> void:
+	if res.get("verificado", false):
+		token_visto_bueno = res.get("ticket_franklin", "")
+		current_price = int(res.get("precio_unitario", current_price))
+		var stock = res.get("stock_en_bd", 1)
+		var m_nom = res.get("mineral_nombre", mineral_name)
+		
+		target_dialogue_text = "Franklin Martínez: ¡Confirmado por Render! Tienes %d saco(s) de %s en tu cuenta de usuario. Te ofrezco $%d por el cargamento." % [stock, m_nom, current_price]
+		btn_vender.disabled = false
+		btn_vender.text = "✔ Vender ($%d)" % current_price
+	else:
+		token_visto_bueno = ""
+		target_dialogue_text = res.get("error", "Franklin Martínez: Render indica que no posees este mineral en tu bóveda. No puedo comprarte nada inexistente.")
+		btn_vender.disabled = true
+		btn_vender.text = "✖ Mineral No Poseído"
+		lbl_stamp.visible = true
+		lbl_stamp.text = "✖ INVENTARIO EN CERO"
+		lbl_stamp.add_theme_color_override("font_color", Color(0.95, 0.3, 0.3, 1))
+
+	_iniciar_escritura_dialogo()
+	_actualizar_botones()
 
 func _mostrar_vista_franklin() -> void:
 	img_buyer.visible = true
@@ -174,48 +192,49 @@ func _process(delta: float) -> void:
 
 func _on_btn_principal_pressed() -> void:
 	if fase_actual == FaseModal.FRANKLIN_COTIZACION:
-		_ejecutar_auditoria_max_drag()
-	elif fase_actual == FaseModal.MAX_DRAG_APROBADO:
-		_completar_cobro_liquidacion()
+		_ejecutar_cierre_venta_max_drag()
+	elif fase_actual == FaseModal.MAX_DRAG_APROBADO or fase_actual == FaseModal.MAX_DRAG_RECHAZADO:
+		_cerrar_definitivamente(current_price if fase_actual == FaseModal.MAX_DRAG_APROBADO else 0)
 
-## Max Drag evalúa con el Backend Render y responde con naturalidad
-func _ejecutar_auditoria_max_drag() -> void:
+## PASO 3 Y 4: VISTO BUENO DE MAX DRAG Y REGLA ESTRICTA DE OPERACIONES ATÓMICAS
+func _ejecutar_cierre_venta_max_drag() -> void:
 	_mostrar_vista_max_drag()
 	btn_vender.disabled = true
 	btn_vender.text = "Auditando cuentas..."
+	target_dialogue_text = "Max Drag (CFO): Comprobando simultáneamente stock en tu inventario y liquidez en la Bóveda del Gestor..."
+	_iniciar_escritura_dialogo()
 
 	if FirebaseManager.instance != null:
-		FirebaseManager.instance.solicitar_visto_bueno_render(current_res_key, 1, _on_visto_bueno_backend_recibido)
+		FirebaseManager.instance.max_drag_cerrar_venta(current_res_key, token_visto_bueno, _on_max_drag_cierre_recibido)
 	else:
 		_evaluar_auditoria_fallback()
 
-func _on_visto_bueno_backend_recibido(res: Dictionary) -> void:
-	if res.is_empty():
-		_evaluar_auditoria_fallback()
-		return
-
-	if res.get("aprobado", false):
-		token_visto_bueno = res.get("token", "")
-		current_price = int(res.get("monto_aprobado", current_price))
+func _on_max_drag_cierre_recibido(res: Dictionary) -> void:
+	if res.get("success", false) and res.get("aprobado", false):
+		var monto_ganado = int(res.get("monto_pagado", current_price))
 		fase_actual = FaseModal.MAX_DRAG_APROBADO
 		lbl_stamp.visible = true
-		lbl_stamp.text = "✔ VISTO BUENO: MAX DRAG"
+		lbl_stamp.text = "✔ VISTO BUENO: MAX DRAG (OPERACIÓN ATÓMICA)"
 		lbl_stamp.add_theme_color_override("font_color", Color(0.2, 0.95, 0.45, 1))
 
 		if is_instance_valid(max_drag_anim):
 			max_drag_anim.trigger_approval_nod()
 
-		target_dialogue_text = res.get("mensaje", "He revisado tu cargamento y las cuentas corporativas. Todo está en orden. Tienes mi visto bueno para recibir tus $%d monedas." % current_price)
+		target_dialogue_text = res.get("mensaje", "¡Transacción Atómica Completada! Max Drag validó liquidez y entrega. Has recibido $%d." % monto_ganado)
+		GestorJuego.add_cash(monto_ganado)
+		btn_vender.disabled = false
+		btn_vender.text = "✔ Finalizar y Continuar"
 	else:
 		token_visto_bueno = ""
 		fase_actual = FaseModal.MAX_DRAG_RECHAZADO
 		lbl_stamp.visible = true
-		lbl_stamp.text = "✖ SIN LIQUIDEZ: CONTACTAR AL CEO"
+		lbl_stamp.text = "✖ RECHAZADO: SEGURIDAD FINANCIERA"
 		lbl_stamp.add_theme_color_override("font_color", Color(0.95, 0.3, 0.3, 1))
-		target_dialogue_text = res.get("mensaje", "Lo siento, no tenemos suficiente liquidez en la empresa. Esperemos que el CEO invierta.")
+		target_dialogue_text = res.get("error", "Max Drag: La operación no pudo ser autorizada.")
+		btn_vender.disabled = false
+		btn_vender.text = "✖ Entendido"
 
 	_iniciar_escritura_dialogo()
-	_actualizar_botones()
 
 func _evaluar_auditoria_fallback() -> void:
 	dictamen_actual = IAEmpresarial.max_drag_auditar_y_dictaminar(solicitud_actual)

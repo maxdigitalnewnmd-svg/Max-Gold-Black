@@ -76,6 +76,65 @@ const FLEET_EXPLORATION_RULES = {
   }
 };
 
+// Códigos Encriptados Oficiales para Camiones de los Usuarios
+function generateTruckSecurityCode(uid, tier) {
+  const hmac = crypto.createHmac('sha256', ENCRYPTION_KEY_BUF);
+  hmac.update(`TRUCK_SECURITY_AUTH:${uid}:TIER_${tier}:MAX_GOLD_BLACK_2026`);
+  const hash = hmac.digest('hex').substring(0, 16).toUpperCase();
+  return `MGB-TRK-T${tier}-${hash}`;
+}
+
+function verifyTruckSecurityCode(uid, tier, code) {
+  if (!code) return false;
+  const expected = generateTruckSecurityCode(uid, tier);
+  return code.trim().toUpperCase() === expected;
+}
+
+// Commit Atómico en Firestore (FieldValue.increment / fieldTransforms)
+async function executeFirestoreCommit(writes) {
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:commit`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ writes })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error?.message || 'Error en commit atómico de Firestore');
+  }
+  return data;
+}
+
+// Asegurar que los campos numéricos de Usuarios existan como integerValue para soportar increment()
+async function ensureUserNumericFields(uid) {
+  const url = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
+  const res = await fetch(url);
+  if (!res.ok) return;
+  const doc = await res.json();
+  const fields = doc.fields || {};
+
+  const fieldsToFix = {};
+  const numericKeys = ['Carbon', 'Oro', 'Esmeralda', 'Moneda', 'Billete'];
+  let needsPatch = false;
+
+  for (const k of numericKeys) {
+    if (!fields[k] || fields[k].integerValue === undefined) {
+      const val = parseMoney(extractVal(fields[k]));
+      fieldsToFix[k] = { integerValue: val };
+      needsPatch = true;
+    }
+  }
+
+  if (needsPatch) {
+    const mask = Object.keys(fieldsToFix).map(k => `updateMask.fieldPaths=${k}`).join('&');
+    await fetch(`${url}?${mask}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: fieldsToFix })
+    });
+  }
+}
+
 // ----------------- MÓDULO CRIPTOGRÁFICO MILITAR (AES-256-CBC + HMAC-SHA256) -----------------
 function encryptPayload(dataObj) {
   const jsonStr = JSON.stringify(dataObj);
@@ -184,6 +243,13 @@ async function getOrSyncUser(uid, candidateData = {}) {
       });
     }
 
+    const truckCodes = {
+      1: generateTruckSecurityCode(uid, 1),
+      2: generateTruckSecurityCode(uid, 2),
+      3: generateTruckSecurityCode(uid, 3),
+      4: generateTruckSecurityCode(uid, 4)
+    };
+
     const userData = {
       uid: uid,
       username: isCeoUid ? CEO_CONFIG.username : (extractVal(fields.Username) || candidateData.username || 'Minero'),
@@ -196,11 +262,19 @@ async function getOrSyncUser(uid, candidateData = {}) {
       oro: parseMoney(extractVal(fields.Oro)),
       esmeralda: parseMoney(extractVal(fields.Esmeralda)),
       es_ceo: isCeoUid,
+      truck_security_codes: truckCodes,
       inmutable: true
     };
 
     return userData;
   }
+
+  const truckCodes = {
+    1: generateTruckSecurityCode(uid, 1),
+    2: generateTruckSecurityCode(uid, 2),
+    3: generateTruckSecurityCode(uid, 3),
+    4: generateTruckSecurityCode(uid, 4)
+  };
 
   // Si no existe y es el CEO, crearlo con datos fundacionales inmutables
   if (isCeoUid) {
@@ -210,11 +284,11 @@ async function getOrSyncUser(uid, candidateData = {}) {
       correo: { stringValue: CEO_CONFIG.correo },
       Tipo: { stringValue: CEO_CONFIG.tipo },
       fecha_creacion: { stringValue: CEO_CONFIG.fecha_creacion },
-      Moneda: { stringValue: '0' },
-      Billete: { stringValue: '0' },
-      Carbon: { stringValue: '0' },
-      Oro: { stringValue: '0' },
-      Esmeralda: { stringValue: '0' }
+      Moneda: { integerValue: 0 },
+      Billete: { integerValue: 0 },
+      Carbon: { integerValue: 0 },
+      Oro: { integerValue: 0 },
+      Esmeralda: { integerValue: 0 }
     };
 
     await fetch(url, {
@@ -235,6 +309,7 @@ async function getOrSyncUser(uid, candidateData = {}) {
       oro: 0,
       esmeralda: 0,
       es_ceo: true,
+      truck_security_codes: truckCodes,
       inmutable: true
     };
   }
@@ -252,11 +327,11 @@ async function getOrSyncUser(uid, candidateData = {}) {
     correo: { stringValue: safeEmail },
     Tipo: { stringValue: 'Minero' },
     fecha_creacion: { stringValue: nowStr },
-    Moneda: { stringValue: '0' },
-    Billete: { stringValue: '0' },
-    Carbon: { stringValue: '0' },
-    Oro: { stringValue: '0' },
-    Esmeralda: { stringValue: '0' }
+    Moneda: { integerValue: 0 },
+    Billete: { integerValue: 0 },
+    Carbon: { integerValue: 0 },
+    Oro: { integerValue: 0 },
+    Esmeralda: { integerValue: 0 }
   };
 
   await fetch(url, {
@@ -277,6 +352,7 @@ async function getOrSyncUser(uid, candidateData = {}) {
     oro: 0,
     esmeralda: 0,
     es_ceo: false,
+    truck_security_codes: truckCodes,
     inmutable: true
   };
 }
@@ -626,10 +702,15 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      // --- ACCIÓN: VALIDACIÓN ANTI-HACKERS DE HALLAZGO (PROOF-OF-EXPLORATION) ---
-      if (action === 'REPORTAR_HALLAZGO') {
-        const tier = parseInt(requestData.camioneta_tier || 1, 10);
-        const resourceType = (requestData.tipo_hallazgo || '').toUpperCase();
+      // =========================================================================
+      // PASO 1: EXTRACCIÓN Y VALIDACIÓN (CAMIONES ➔ RENDER)
+      // Valida código encriptado del camión, física de onda y probabilidad de Tier.
+      // Si es válido, actualiza el campo correspondiente sumando el mineral (Operación Atómica).
+      // =========================================================================
+      if (action === 'REPORTAR_HALLAZGO' || action === 'EXTRAER_RECURSO_CAMION') {
+        const tier = parseInt(requestData.camioneta_tier || requestData.tier || 1, 10);
+        const resourceType = (requestData.tipo_hallazgo || requestData.recurso || '').toUpperCase();
+        const truckSecurityCode = requestData.truck_security_code || requestData.truck_code || '';
         const now = Date.now();
 
         const rule = FLEET_EXPLORATION_RULES[tier];
@@ -639,12 +720,23 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        // VALIDACIÓN TEMPORAL (Speedhack Prevention)
+        // 1.1 VALIDACIÓN DEL CÓDIGO ENCRIPTADO INDIVIDUAL DEL CAMIÓN
+        if (!verifyTruckSecurityCode(uid, tier, truckSecurityCode)) {
+          console.warn(`[SEGURIDAD] Intento de extracción con código de camión inválido: uid=${uid}, tier=${tier}, code=${truckSecurityCode}`);
+          return sendEncryptedResponse(res, 403, {
+            validado: false,
+            error: 'VIOLACIÓN DE SEGURIDAD: El camión utilizado no posee un código encriptado corporativo autorizado para este usuario.',
+            codigo: 'INVALID_TRUCK_ENCRYPTED_CODE'
+          });
+        }
+
+        // 1.2 VALIDACIÓN TEMPORAL (Speedhack Prevention)
         const lastTime = lastExplorationTimes.get(uid) || 0;
         const elapsed = now - lastTime;
         if (lastTime > 0 && elapsed < rule.frecuencia_minima_segura_ms) {
           console.warn(`[ANTI-HACK] Speedhack detectado para ${uid}: ${elapsed}ms < ${rule.frecuencia_minima_segura_ms}ms`);
           return sendEncryptedResponse(res, 429, {
+            validado: false,
             error: 'ANOMALÍA TEMPORAL DETECTADA: Frecuencia de muestreo físicamente imposible para el sensor sísmico.',
             codigo: 'SPEEDHACK_BLOCKED',
             tiempo_transcurrido_ms: elapsed,
@@ -652,11 +744,12 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        // VALIDACIÓN DE PROBABILIDAD (0% Esmeralda en T1)
+        // 1.3 VALIDACIÓN DE PROBABILIDAD FÍSICA SEGÚN EL TIER (Ej: 0% Esmeralda en T1)
         const maxProb = rule.probabilidades_max[resourceType];
         if (maxProb === undefined || maxProb <= 0) {
-          console.warn(`[ANTI-HACK] Intento de inyección de mineral imposible: ${resourceType} en ${rule.nombre}`);
+          console.warn(`[ANTI-HACK] Intento de extracción imposible: ${resourceType} en ${rule.nombre}`);
           return sendEncryptedResponse(res, 403, {
+            validado: false,
             error: `FRAUDE BLOQUEADO: El vehículo ${rule.nombre} no tiene capacidad sísmica para extraer ${resourceType} (Probabilidad: 0%).`,
             codigo: 'IMPOSSIBLE_RESOURCE_INJECTION'
           });
@@ -664,172 +757,305 @@ const server = http.createServer(async (req, res) => {
 
         lastExplorationTimes.set(uid, now);
 
+        // 1.4 ACTUALIZACIÓN ATÓMICA EN LA BASE DE DATOS (SUMAR EL MINERAL)
+        await ensureUserNumericFields(uid);
+        const fieldMap = { COAL: 'Carbon', GOLD: 'Oro', EMERALD: 'Esmeralda' };
+        const mineralField = fieldMap[resourceType] || 'Carbon';
+
+        const atomicMineralWrite = [
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
+              fieldTransforms: [
+                {
+                  fieldPath: mineralField,
+                  increment: { integerValue: 1 }
+                }
+              ]
+            }
+          }
+        ];
+
+        try {
+          await executeFirestoreCommit(atomicMineralWrite);
+        } catch (commitErr) {
+          console.error('[PASO 1] Error en commit atómico de extracción:', commitErr);
+          return sendEncryptedResponse(res, 500, {
+            validado: false,
+            error: 'Error al registrar el mineral en la base de datos central.'
+          });
+        }
+
         return sendEncryptedResponse(res, 200, {
           success: true,
           validado: true,
           mineral: resourceType,
+          mineral_field: mineralField,
           tier_verificado: tier,
-          mensaje: 'Muestra sísmica auditada y validada legalmente por el Gateway de Render.'
+          truck_code_verificado: true,
+          mensaje: `¡Extracción validada por Render! +1 ${mineralField} sumado atómicamente a tu cuenta en Firestore.`
         });
       }
 
-      // --- ACCIÓN: SOLICITUD DE TRANSACCIÓN (FRANKLIN & MAX DRAG GOBERNANZA) ---
-      if (action === 'SOLICITAR_TRANSACCION') {
-        const minKey = (requestData.mineral || 'COAL').toUpperCase();
-        const cantidad = Math.max(1, Math.floor(requestData.cantidad || 1));
-
-        const user = await getOrSyncUser(uid, requestData);
-
-        const validos = ['COAL', 'GOLD', 'EMERALD'];
-        if (!validos.includes(minKey)) {
-          return sendEncryptedResponse(res, 400, {
-            aprobado: false,
-            actor: 'Franklin Martínez',
-            codigo: 'MINERAL_NO_AUTORIZADO',
-            mensaje: 'Disculpe, este material no está en la lista de recepción autorizada.'
-          });
-        }
-
-        const gestor = await fetchGestorData();
-        const precioOficial = gestor.precios[minKey] || 30;
-        const montoTotal = precioOficial * cantidad;
-        const fondosDisponibles = gestor.boveda[minKey] || 0;
-
-        if (fondosDisponibles < montoTotal) {
-          const mensajeLiquidez = user.es_ceo
-            ? `Estimado CEO ${user.username}, la bóveda corporativa se encuentra temporalmente sin liquidez para esta transacción. Se requiere orden de capitalización.`
-            : `Lo siento ${user.username}, no tenemos suficiente liquidez en la empresa. Esperemos que el CEO invierta.`;
-
-          return sendEncryptedResponse(res, 200, {
-            aprobado: false,
-            actor: 'Max Drag',
-            codigo: 'FALTA_LIQUIDEZ_CEO',
-            mensaje: mensajeLiquidez,
-            fondos_disponibles: fondosDisponibles,
-            monto_requerido: montoTotal
-          });
-        }
-
-        const payloadTicket = {
-          tokenId: `VB_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`,
-          mineral: minKey,
-          cantidad,
-          precio_unitario: precioOficial,
-          monto_total: montoTotal,
-          uid: user.uid,
-          username: user.username,
-          correo: user.correo,
-          tipo: user.tipo,
-          timestamp: Date.now(),
-          exp: Date.now() + 60000,
-          firmado_por: 'Max Drag - CFO',
-          verificado_por: 'Franklin Martínez - Operaciones'
-        };
-
-        const signedToken = signAuthorizationPayload(payloadTicket);
-
-        const mensajeExito = user.es_ceo
-          ? `Estimado CEO ${user.username}, he verificado sus credenciales y el cargamento en bóveda. Todo está en orden bajo la normativa. Tiene mi visto bueno institucional para recibir sus $${montoTotal} Dragcoins.`
-          : `He revisado tu cargamento y tus credenciales de minero. Todo está en orden. Tienes mi visto bueno para recibir tus $${montoTotal} Dragcoins.`;
-
-        return sendEncryptedResponse(res, 200, {
-          aprobado: true,
-          actor: 'Max Drag',
-          codigo: 'VISTO_BUENO_CONCEDIDO',
-          token: signedToken,
-          monto_aprobado: montoTotal,
-          precio_unitario: precioOficial,
-          usuario_verificado: {
-            uid: user.uid,
-            username: user.username,
-            tipo: user.tipo
-          },
-          mensaje: mensajeExito
-        });
-      }
-
-      // --- ACCIÓN: LIQUIDAR TRANSACCIÓN SEGURA EN FIRESTORE ---
-      if (action === 'LIQUIDAR_TRANSACCION') {
-        const token = requestData.token;
-        const verification = verifyAuthorizationToken(token);
-        if (!verification.valid) {
-          return sendEncryptedResponse(res, 403, {
-            error: 'Operación denegada',
-            motivo: verification.error
-          });
-        }
-
-        const ticket = verification.payload;
-        if (ticket.uid !== uid) {
-          return sendEncryptedResponse(res, 403, {
-            error: 'Violación de identidad en ticket',
-            motivo: 'El ticket no pertenece al usuario autenticado'
-          });
-        }
-
-        // 1. Debitar de la bóveda en Gestor
+      // =========================================================================
+      // PASO 2: DOBLE VERIFICACIÓN DE FRANKLIN (RENDER ➔ CLIENTE)
+      // Franklin pregunta: '¿Es cierto que este usuario tiene este mineral en su inventario?'.
+      // Render verifica en Firestore y, si es afirmativo, emite la propuesta con ticket firmado.
+      // =========================================================================
+      if (action === 'FRANKLIN_VERIFICAR_MINERAL' || action === 'VERIFICAR_INVENTARIO_FRANKLIN') {
+        const minKey = (requestData.mineral || requestData.recurso || 'COAL').toUpperCase();
         const fieldMap = { COAL: 'Carbon', GOLD: 'Oro', EMERALD: 'Esmeralda' };
-        const fieldName = fieldMap[ticket.mineral] || 'Carbon';
+        const fieldName = fieldMap[minKey] || 'Carbon';
 
-        const bovedaRes = await fetch(`${FIRESTORE_BASE_URL}/Gestor/boveda_del_Gestor`);
-        const bovedaDoc = await bovedaRes.json();
-        const currentFunds = parseMoney(extractVal(bovedaDoc.fields?.[fieldName]));
-        const newFunds = Math.max(0, currentFunds - ticket.monto_total);
-
-        await fetch(`${FIRESTORE_BASE_URL}/Gestor/boveda_del_Gestor?updateMask.fieldPaths=${fieldName}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: { [fieldName]: { stringValue: `$${newFunds}` } }
-          })
-        });
-
-        // 2. Acreditar Dragcoins en Usuarios/{uid}
+        // 2.1 Consulta rigurosa a la base de datos central
+        await ensureUserNumericFields(uid);
         const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
         const userRes = await fetch(userUrl);
-        let userCoins = 0;
-        let userCash = 0;
 
-        if (userRes.ok) {
-          const uDoc = await userRes.json();
-          userCoins = parseMoney(extractVal(uDoc.fields?.Moneda));
-          userCash = parseMoney(extractVal(uDoc.fields?.Billete));
+        if (!userRes.ok) {
+          return sendEncryptedResponse(res, 404, {
+            verificado: false,
+            actor: 'Franklin Martínez',
+            error: 'Franklin Martínez: No pude localizar tu registro de usuario en la base de datos.'
+          });
         }
 
-        userCoins += ticket.monto_total;
+        const userDoc = await userRes.json();
+        const stockActual = parseMoney(extractVal(userDoc.fields?.[fieldName]));
 
-        await fetch(`${userUrl}?updateMask.fieldPaths=Moneda`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: {
-              Moneda: { stringValue: String(userCoins) }
-            }
-          })
+        // 2.2 Si el inventario no tiene el mineral, Franklin rechaza la compra
+        if (stockActual < 1) {
+          return sendEncryptedResponse(res, 200, {
+            verificado: false,
+            actor: 'Franklin Martínez',
+            mineral: minKey,
+            stock_actual: stockActual,
+            error: `Franklin Martínez: Consulté a Render y tu inventario de ${fieldName} está en 0. No puedo ofrecerte compra por recursos inexistentes.`
+          });
+        }
+
+        // 2.3 Obtener cotización oficial del Gestor
+        const gestor = await fetchGestorData();
+        const precioOficial = gestor.precios[minKey] || 30;
+
+        // 2.4 Emitir Ticket Criptográfico firmado por Franklin
+        const payloadFranklin = {
+          tipo: 'TICKET_FRANKLIN_COTIZACION',
+          ticketId: `FRK_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`,
+          uid: uid,
+          mineral: minKey,
+          cantidad: 1,
+          precio_unitario: precioOficial,
+          timestamp: Date.now(),
+          exp: Date.now() + 180000 // 3 minutos de vigencia
+        };
+
+        const ticketFranklin = signAuthorizationPayload(payloadFranklin);
+
+        return sendEncryptedResponse(res, 200, {
+          verificado: true,
+          actor: 'Franklin Martínez',
+          mineral: minKey,
+          mineral_nombre: fieldName,
+          stock_en_bd: stockActual,
+          precio_unitario: precioOficial,
+          ticket_franklin: ticketFranklin,
+          mensaje: `Franklin Martínez: ¡Confirmado con la base de datos! Tienes ${stockActual} unidad(es) de ${fieldName}. Te ofrezco formalmente $${precioOficial} por saco.`
         });
+      }
 
-        // 3. Sincronizar en jugadores/{uid}
-        await fetch(`${FIRESTORE_BASE_URL}/jugadores/${uid}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: {
-              coins: { integerValue: String(userCoins) },
-              cash: { integerValue: String(userCash) },
-              player_id: { stringValue: uid },
-              last_updated: { stringValue: new Date().toISOString() }
+      // =========================================================================
+      // PASOS 3 Y 4: VISTO BUENO DE MAX DRAG & REGLA ESTRICTA DE OPERACIONES ATÓMICAS
+      // Comprobación simultánea: usuario tiene el mineral Y Bóveda tiene liquidez.
+      // Si ambos cumplen, aplica OPERACIONES ATÓMICAS (increment / decrement).
+      // PROHIBIDO SOBREESCRIBIR MONTOS FIJOS.
+      // =========================================================================
+      if (action === 'MAX_DRAG_CIERRE_VENTA' || action === 'LIQUIDAR_TRANSACCION' || action === 'SOLICITAR_TRANSACCION') {
+        const ticketToken = requestData.ticket_franklin || requestData.token;
+        
+        let ticket;
+        if (ticketToken) {
+          const verification = verifyAuthorizationToken(ticketToken);
+          if (!verification.valid) {
+            return sendEncryptedResponse(res, 403, {
+              success: false,
+              aprobado: false,
+              actor: 'Max Drag',
+              error: 'Max Drag: Ticket de cotización inválido, manipulado o expirado.',
+              motivo: verification.error
+            });
+          }
+          ticket = verification.payload;
+        } else {
+          // Si no envía token, construir solicitud con validación directa de mineral
+          const minKey = (requestData.mineral || requestData.recurso || 'COAL').toUpperCase();
+          const gestor = await fetchGestorData();
+          ticket = {
+            ticketId: `DIRECT_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+            uid: uid,
+            mineral: minKey,
+            cantidad: 1,
+            precio_unitario: gestor.precios[minKey] || 30
+          };
+        }
+
+        if (ticket.uid !== uid) {
+          return sendEncryptedResponse(res, 403, {
+            success: false,
+            aprobado: false,
+            actor: 'Max Drag',
+            error: 'Violación de identidad: El ticket pertenece a otro usuario.'
+          });
+        }
+
+        const ticketId = ticket.ticketId || ticket.tokenId;
+        if (tokensLiquidados.has(ticketId)) {
+          return sendEncryptedResponse(res, 403, {
+            success: false,
+            aprobado: false,
+            actor: 'Max Drag',
+            error: 'Max Drag: Este ticket ya fue cobrado previamente. Intento de doble gasto rechazado.'
+          });
+        }
+
+        const fieldMap = { COAL: 'Carbon', GOLD: 'Oro', EMERALD: 'Esmeralda' };
+        const fieldName = fieldMap[ticket.mineral] || 'Carbon';
+        const cantidadVenta = ticket.cantidad || 1;
+        const precioUnitario = ticket.precio_unitario || ticket.precio_ofrecido || 30;
+        const montoTotal = precioUnitario * cantidadVenta;
+
+        // --- PASO 3: COMPROBACIÓN SIMULTÁNEA DE MAX DRAG ---
+        await ensureUserNumericFields(uid);
+
+        // A) Comprobar inventario del usuario en Usuarios/{uid}
+        const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
+        const userRes = await fetch(userUrl);
+        if (!userRes.ok) {
+          return sendEncryptedResponse(res, 400, {
+            success: false,
+            aprobado: false,
+            actor: 'Max Drag',
+            error: 'Max Drag: No se pudo verificar la cuenta del usuario en Firestore.'
+          });
+        }
+        const userDoc = await userRes.json();
+        const userMineralStock = parseMoney(extractVal(userDoc.fields?.[fieldName]));
+
+        if (userMineralStock < cantidadVenta) {
+          return sendEncryptedResponse(res, 200, {
+            success: false,
+            aprobado: false,
+            actor: 'Max Drag',
+            error: `Max Drag (Seguridad Financiera): Rechazado. El usuario no posee el mineral para entregar. Stock en BD: ${userMineralStock}, Requerido: ${cantidadVenta}.`
+          });
+        }
+
+        // B) Comprobar liquidez de la Bóveda del Gestor en Gestor/boveda_del_Gestor
+        const bovedaUrl = `${FIRESTORE_BASE_URL}/Gestor/boveda_del_Gestor`;
+        const bovedaRes = await fetch(bovedaUrl);
+        if (!bovedaRes.ok) {
+          return sendEncryptedResponse(res, 500, {
+            success: false,
+            aprobado: false,
+            actor: 'Max Drag',
+            error: 'Max Drag: Error al verificar la Bóveda del Gestor.'
+          });
+        }
+        const bovedaDoc = await bovedaRes.json();
+        const bovedaLiquidez = parseMoney(extractVal(bovedaDoc.fields?.[fieldName]));
+
+        if (bovedaLiquidez < montoTotal) {
+          return sendEncryptedResponse(res, 200, {
+            success: false,
+            aprobado: false,
+            actor: 'Max Drag',
+            error: `Max Drag (Seguridad Financiera): Rechazado. La Bóveda del Gestor no cuenta con liquidez suficiente para pagar $${montoTotal}. Fondos en Bóveda: $${bovedaLiquidez}. Contactar al CEO.`
+          });
+        }
+
+        // --- PASO 4: REGLA ESTRICTA DE OPERACIONES ATÓMICAS EN BASE DE DATOS ---
+        // ESTÁ PROHIBIDO SOBREESCRIBIR MONTOS FIJOS. SOLO FUNCIONES DE INCREMENTO / DECREMENTO.
+        const atomicTransactions = [
+          // 1. Al Usuario: Restar cantidad exacta de mineral y sumar monto exacto de dinero (Billete)
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
+              fieldTransforms: [
+                {
+                  fieldPath: fieldName,
+                  increment: { integerValue: -cantidadVenta }
+                },
+                {
+                  fieldPath: 'Billete',
+                  increment: { integerValue: montoTotal }
+                }
+              ]
             }
-          })
-        });
+          },
+          // 2. A la Bóveda del Gestor: Restar el monto exacto del pago
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Gestor/boveda_del_Gestor`,
+              fieldTransforms: [
+                {
+                  fieldPath: fieldName,
+                  increment: { integerValue: -montoTotal }
+                }
+              ]
+            }
+          },
+          // 3. A jugadores/jugador_1 (compatibilidad HUD): Sumar cash
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/jugadores/jugador_1`,
+              fieldTransforms: [
+                {
+                  fieldPath: 'cash',
+                  increment: { integerValue: montoTotal }
+                }
+              ]
+            }
+          }
+        ];
 
-        tokensLiquidados.add(ticket.tokenId);
+        try {
+          await executeFirestoreCommit(atomicTransactions);
+        } catch (commitErr) {
+          console.error('[PASO 4] Error en ejecución atómica de venta:', commitErr);
+          return sendEncryptedResponse(res, 500, {
+            success: false,
+            aprobado: false,
+            actor: 'Max Drag',
+            error: 'Error al ejecutar la transacción atómica en Firestore: ' + commitErr.message
+          });
+        }
+
+        tokensLiquidados.add(ticketId);
 
         return sendEncryptedResponse(res, 200, {
           success: true,
-          transaccion_id: ticket.tokenId,
-          monto_liquidado: ticket.monto_total,
-          nuevas_dragcoins: userCoins,
-          boveda_restante: newFunds
+          aprobado: true,
+          actor: 'Max Drag & Franklin Martínez',
+          codigo: 'TRANSACCION_ATOMICA_EXITOSA',
+          mineral: ticket.mineral,
+          cantidad_vendida: cantidadVenta,
+          monto_pagado: montoTotal,
+          mensaje: `¡Transacción Atómica Completada! Max Drag aprobó el desembolso. Franklin recibió 1 saco de ${fieldName}. Se debitó 1 de tu inventario y se sumaron +$${montoTotal} Max COP. La Bóveda fue descontada en -$${montoTotal} bajo regla atómica inquebrantable.`
+        });
+      }
+
+      // --- ACCIÓN: OBTENER CÓDIGOS DE SEGURIDAD ENCRIPTADOS DE CAMIONES ---
+      if (action === 'GET_TRUCK_CODES') {
+        const codes = {
+          1: generateTruckSecurityCode(uid, 1),
+          2: generateTruckSecurityCode(uid, 2),
+          3: generateTruckSecurityCode(uid, 3),
+          4: generateTruckSecurityCode(uid, 4)
+        };
+        return sendEncryptedResponse(res, 200, {
+          success: true,
+          uid: uid,
+          truck_codes: codes
         });
       }
 

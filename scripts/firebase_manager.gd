@@ -24,6 +24,7 @@ const SAVE_PATH_USER_ID: String = "user://firebase_user_id.dat"
 const SAVE_PATH_SESSION: String = "user://session_auth.json"
 
 var has_session: bool = false
+var truck_security_codes: Dictionary = {}
 
 # Identidad Oficial del CEO Fundador (Colección 'Usuarios' en Firestore)
 var current_user_uid: String = "QEMLQtpeFYgfXmZL8eXQSzlMypg2"
@@ -253,6 +254,11 @@ func consultar_usuario_en_vivo() -> void:
 			current_email = user_profile.get("correo", current_email)
 			current_role = user_profile.get("tipo", current_role)
 			
+			if user_profile.has("truck_security_codes"):
+				var tc = user_profile["truck_security_codes"]
+				if tc is Dictionary:
+					truck_security_codes = tc
+
 			var coins_val = int(user_profile.get("moneda", 0))
 			var cash_val = int(user_profile.get("billete", 0))
 			GestorJuego.coins = coins_val
@@ -261,41 +267,74 @@ func consultar_usuario_en_vivo() -> void:
 			user_profile_updated.emit(user_profile)
 	)
 
-# ----------------- VALIDACIÓN ANTI-HACKERS DE HALLAZGOS -----------------
+## Obtiene el código encriptado individual de seguridad del camión según su Tier
+func get_truck_security_code(tier: int) -> String:
+	if truck_security_codes.has(tier) and not str(truck_security_codes[tier]).is_empty():
+		return str(truck_security_codes[tier])
+	if truck_security_codes.has(str(tier)) and not str(truck_security_codes[str(tier)]).is_empty():
+		return str(truck_security_codes[str(tier)])
+	
+	# Cálculo local HMAC-SHA256 idéntico al del Gateway de Render
+	var key_bytes = EncriptacionManager.get_key_bytes()
+	var raw_msg = "TRUCK_SECURITY_AUTH:" + current_user_uid + ":TIER_" + str(tier) + ":MAX_GOLD_BLACK_2026"
+	var hmac_bytes = EncriptacionManager.compute_hmac_sha256(key_bytes, raw_msg.to_utf8_buffer())
+	var full_hex = hmac_bytes.hex_encode().to_upper()
+	var code = "MGB-TRK-T" + str(tier) + "-" + full_hex.substr(0, 16)
+	truck_security_codes[tier] = code
+	return code
+
+# ----------------- PASO 1: EXTRACCIÓN Y VALIDACIÓN (CAMIONES ➔ RENDER) -----------------
+## Envía el código encriptado del camión a Render. Render descifra, valida probabilidad
+## y actualiza atómicamente la base de datos sumando el mineral al usuario.
 func reportar_hallazgo_seguro(camioneta_tier: int, tipo_hallazgo: String, callback: Callable) -> void:
+	var truck_code = get_truck_security_code(camioneta_tier)
 	var payload = {
 		"action": "REPORTAR_HALLAZGO",
 		"uid": current_user_uid,
 		"camioneta_tier": camioneta_tier,
 		"tipo_hallazgo": tipo_hallazgo,
+		"truck_security_code": truck_code,
 		"timestamp_muestra": int(Time.get_unix_time_from_system() * 1000)
 	}
-	post_encrypted_gateway(payload, callback)
+	post_encrypted_gateway(payload, func(res: Dictionary):
+		if res.get("validado", false):
+			consultar_usuario_en_vivo()
+		callback.call(res)
+	)
 
-# ----------------- GOBERNANZA FRANKLIN Y MAX DRAG ENCRIPTADA -----------------
-func solicitar_visto_bueno_render(mineral_key: String, cantidad: int, callback: Callable) -> void:
+# ----------------- PASO 2: DOBLE VERIFICACIÓN DE FRANKLIN (RENDER ➔ CLIENTE) -----------------
+## Franklin pregunta a Render: '¿Es cierto que este usuario tiene este mineral en su inventario?'.
+## Si Render confirma, Franklin ofrece la compra con el precio oficial y ticket firmado.
+func franklin_verificar_mineral(mineral_key: String, callback: Callable) -> void:
 	var payload = {
-		"action": "SOLICITAR_TRANSACCION",
-		"mineral": mineral_key,
-		"cantidad": cantidad,
+		"action": "FRANKLIN_VERIFICAR_MINERAL",
 		"uid": current_user_uid,
-		"username": current_username,
-		"correo": current_email,
-		"tipo": current_role
+		"mineral": mineral_key
 	}
 	post_encrypted_gateway(payload, callback)
 
-func liquidar_transaccion_render(token: String, callback: Callable) -> void:
+# ----------------- PASOS 3 Y 4: VISTO BUENO MAX DRAG Y REGLA ATÓMICA DE BD -----------------
+## Max Drag comprueba simultáneamente que el usuario tenga el mineral y que la Bóveda tenga liquidez.
+## Render ejecuta la transacción bajo la REGLA ATÓMICA (increment/decrement sin sobrescribir montos fijos).
+func max_drag_cerrar_venta(mineral_key: String, ticket_franklin: String, callback: Callable) -> void:
 	var payload = {
-		"action": "LIQUIDAR_TRANSACCION",
-		"token": token,
-		"uid": current_user_uid
+		"action": "MAX_DRAG_CIERRE_VENTA",
+		"uid": current_user_uid,
+		"mineral": mineral_key,
+		"ticket_franklin": ticket_franklin
 	}
 	post_encrypted_gateway(payload, func(res: Dictionary):
 		if res.get("success", false):
 			consultar_usuario_en_vivo()
 		callback.call(res)
 	)
+
+# Métodos legacy para retrocompatibilidad
+func solicitar_visto_bueno_render(mineral_key: String, _cantidad: int, callback: Callable) -> void:
+	franklin_verificar_mineral(mineral_key, callback)
+
+func liquidar_transaccion_render(token: String, callback: Callable) -> void:
+	max_drag_cerrar_venta("COAL", token, callback)
 
 func tiene_liquidez(res_key: String, monto: int) -> bool:
 	var key = res_key.to_upper()
