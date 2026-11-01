@@ -40,6 +40,18 @@ corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_google"]
+bg_color = Color(0.12, 0.16, 0.24, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.65, 1, 0.9)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
 [node name="AuthModal" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -132,6 +144,23 @@ theme_override_colors/font_color = Color(0.3, 0.95, 0.95, 1)
 theme_override_font_sizes/font_size = 15
 theme_override_styles/normal = SubResource("StyleBoxFlat_btn_cyan")
 text = "📝 Regístrate"
+
+[node name="BtnGoogleLogin" type="Button" parent="AuthCard/Margin/VBox/ViewWelcome"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_google")
+text = "🌐 Continuar con Google"
+
+[node name="LblSessionAlert" type="Label" parent="AuthCard/Margin/VBox/ViewWelcome"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.4, 0.4, 1)
+theme_override_font_sizes/font_size = 11
+text = "⚠️ Sesión obligatoria requerida para continuar jugando."
+horizontal_alignment = 1
+autowrap_mode = 3
 
 [node name="SecurityBadge" type="Label" parent="AuthCard/Margin/VBox/ViewWelcome"]
 layout_mode = 2
@@ -299,3 +328,58 @@ theme_override_colors/font_color = Color(0.8, 0.7, 0.5, 0.85)
 theme_override_font_sizes/font_size = 9
 text = "⚠️ Las multicuentas con el mismo correo están estrictamente prohibidas."
 horizontal_alignment = 1
+
+[node name="ViewGoogle" type="VBoxContainer" parent="AuthCard/Margin/VBox"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="AuthCard/Margin/VBox/ViewGoogle"]
+layout_mode = 2
+
+[node name="BtnBackGoogle" type="Button" parent="AuthCard/Margin/VBox/ViewGoogle/Header"]
+custom_minimum_size = Vector2(85, 30)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+text = "⬅ Volver"
+
+[node name="Title" type="Label" parent="AuthCard/Margin/VBox/ViewGoogle/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.3, 0.7, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "Acceso con Google"
+horizontal_alignment = 1
+
+[node name="NoticeGoogle" type="Label" parent="AuthCard/Margin/VBox/ViewGoogle"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.9, 0.95, 0.9)
+theme_override_font_sizes/font_size = 11
+text = "Si ya tienes una cuenta con este correo, se fusionará automáticamente bajo tu mismo progreso y UID original."
+autowrap_mode = 3
+
+[node name="LblGoogleEmail" type="Label" parent="AuthCard/Margin/VBox/ViewGoogle"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 11
+text = "📧 Correo de tu cuenta Google:"
+
+[node name="TxtGoogleEmail" type="LineEdit" parent="AuthCard/Margin/VBox/ViewGoogle"]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+placeholder_text = "usuario@gmail.com"
+
+[node name="LblStatusGoogle" type="Label" parent="AuthCard/Margin/VBox/ViewGoogle"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="BtnDoGoogle" type="Button" parent="AuthCard/Margin/VBox/ViewGoogle"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_btn_google")
+text = "🌐 Vincular / Acceder con Google"

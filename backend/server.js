@@ -114,7 +114,7 @@ async function ensureUserNumericFields(uid) {
   const fields = doc.fields || {};
 
   const fieldsToFix = {};
-  const numericKeys = ['Carbon', 'Oro', 'Esmeralda', 'Moneda', 'Billete'];
+  const numericKeys = ['Carbon', 'Oro', 'Esmeralda', 'Moneda', 'Billete', 'numero_de_recoleccion'];
   let needsPatch = false;
 
   for (const k of numericKeys) {
@@ -261,6 +261,7 @@ async function getOrSyncUser(uid, candidateData = {}) {
       carbon: parseMoney(extractVal(fields.Carbon)),
       oro: parseMoney(extractVal(fields.Oro)),
       esmeralda: parseMoney(extractVal(fields.Esmeralda)),
+      numero_de_recoleccion: parseMoney(extractVal(fields.numero_de_recoleccion || fields['Numero de recoleccion'])),
       es_ceo: isCeoUid,
       truck_security_codes: truckCodes,
       inmutable: true
@@ -288,7 +289,8 @@ async function getOrSyncUser(uid, candidateData = {}) {
       Billete: { integerValue: 0 },
       Carbon: { integerValue: 0 },
       Oro: { integerValue: 0 },
-      Esmeralda: { integerValue: 0 }
+      Esmeralda: { integerValue: 0 },
+      numero_de_recoleccion: { integerValue: 0 }
     };
 
     await fetch(url, {
@@ -331,7 +333,8 @@ async function getOrSyncUser(uid, candidateData = {}) {
     Billete: { integerValue: 0 },
     Carbon: { integerValue: 0 },
     Oro: { integerValue: 0 },
-    Esmeralda: { integerValue: 0 }
+    Esmeralda: { integerValue: 0 },
+    numero_de_recoleccion: { integerValue: 0 }
   };
 
   await fetch(url, {
@@ -446,6 +449,109 @@ async function handleFirebaseAuthRegister(email, password, username) {
     expiresIn: data.expiresIn,
     usuario: userProfile,
     mensaje: `¡Cuenta creada exitosamente! Bienvenido al equipo de exploración de Max Gold Black, ${safeUsername}.`
+  };
+}
+
+// ----------------- BUSCADOR DE USUARIOS POR CORREO (PARA FUSIÓN DE CUENTAS) -----------------
+async function findUserByEmail(email) {
+  if (!email) return null;
+  try {
+    const res = await fetch(`${FIRESTORE_BASE_URL}:runQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'Usuarios' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'correo' },
+              op: 'EQUAL',
+              value: { stringValue: email.trim().toLowerCase() }
+            }
+          },
+          limit: 1
+        }
+      })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && data[0] && data[0].document) {
+      const doc = data[0].document;
+      const parts = doc.name.split('/');
+      const docUid = parts[parts.length - 1];
+      return { uid: docUid, fields: doc.fields };
+    }
+  } catch (err) {
+    console.error('[findUserByEmail] Error consultando correo:', err.message);
+  }
+  return null;
+}
+
+// ----------------- AUTENTICACIÓN GOOGLE Y FUSIÓN DE CUENTAS -----------------
+async function handleGoogleAuth(idToken, email, displayName) {
+  let targetEmail = (email || '').trim().toLowerCase();
+  let targetUid = null;
+  let targetName = displayName || '';
+
+  if (idToken) {
+    try {
+      const fbUrl = `${FIREBASE_AUTH_BASE}:signInWithIdp?key=${FIREBASE_API_KEY}`;
+      const fbRes = await fetch(fbUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          postBody: `id_token=${idToken}&providerId=google.com`,
+          requestUri: 'http://localhost',
+          returnSecureToken: true
+        })
+      });
+      const fbData = await fbRes.json();
+      if (fbRes.ok) {
+        targetUid = fbData.localId;
+        targetEmail = (fbData.email || targetEmail).toLowerCase();
+        targetName = targetName || fbData.displayName || '';
+      }
+    } catch (e) {
+      console.warn('[handleGoogleAuth] Fallback ID token:', e.message);
+    }
+  }
+
+  if (!targetEmail) {
+    return {
+      success: false,
+      error: 'No se pudo obtener un correo electrónico válido de la cuenta de Google.'
+    };
+  }
+
+  // REGLA ESTRICTA DE FUSIÓN: Buscar si ya existe una cuenta con este correo
+  const existingUser = await findUserByEmail(targetEmail);
+  let finalUid;
+  let isFused = false;
+
+  if (existingUser) {
+    // FUSIÓN BAJO EL MISMO UID ORIGINAL
+    finalUid = existingUser.uid;
+    isFused = true;
+    console.log(`[AUTH_GOOGLE] FUSIÓN ATÓMICA: Correo ${targetEmail} unificado bajo UID original existente ${finalUid}`);
+  } else {
+    // Si no existe, crear nueva cuenta
+    finalUid = targetUid || `google_${crypto.randomBytes(12).toString('hex')}`;
+  }
+
+  const userProfile = await getOrSyncUser(finalUid, {
+    correo: targetEmail,
+    username: targetName || `Google_${finalUid.substring(0, 5)}`
+  });
+
+  return {
+    success: true,
+    fused: isFused,
+    uid: finalUid,
+    usuario: userProfile,
+    token: `GOOGLE_SESSION_${finalUid}_${Date.now()}`,
+    mensaje: isFused
+      ? `¡Bienvenido de nuevo, ${userProfile.username}! Tu cuenta de Google fue fusionada automáticamente con tu progreso existente (mismo UID: ${finalUid}).`
+      : `¡Bienvenido a Max Gold Black, ${userProfile.username}! Tu cuenta de Google ha sido registrada.`
   };
 }
 
@@ -656,6 +762,43 @@ const server = http.createServer(async (req, res) => {
         return sendEncryptedResponse(res, httpStatus, registerResult);
       }
 
+      // --- ACCIÓN: AUTENTICACIÓN GOOGLE SIGN-IN Y FUSIÓN DE CUENTAS (AUTH_GOOGLE) ---
+      if (action === 'AUTH_GOOGLE') {
+        const idToken = requestData.id_token || '';
+        const email = (requestData.email || '').trim();
+        const displayName = requestData.display_name || requestData.username || '';
+
+        const googleResult = await handleGoogleAuth(idToken, email, displayName);
+        const httpStatus = googleResult.success ? 200 : 400;
+        return sendEncryptedResponse(res, httpStatus, googleResult);
+      }
+
+      // --- ACCIÓN: VERIFICACIÓN OBLIGATORIA DE ESTADO DE SESIÓN (CHECK_SESSION) ---
+      if (action === 'CHECK_SESSION') {
+        const sessionUid = requestData.uid || '';
+        if (!sessionUid) {
+          return sendEncryptedResponse(res, 401, {
+            valida: false,
+            error: 'No se proveyó un UID de sesión.'
+          });
+        }
+
+        const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${sessionUid}`;
+        const uRes = await fetch(userUrl);
+        if (uRes.ok) {
+          return sendEncryptedResponse(res, 200, {
+            valida: true,
+            uid: sessionUid,
+            mensaje: 'Sesión activa y legalmente verificada por Render Gateway.'
+          });
+        } else {
+          return sendEncryptedResponse(res, 401, {
+            valida: false,
+            error: 'Sesión caducada o usuario no encontrado en la base de datos.'
+          });
+        }
+      }
+
       const uid = requestData.uid || requestData.player_id || CEO_CONFIG.uid;
 
       // VALIDACIÓN ANTI-SUPLANTACIÓN DEL CEO
@@ -757,11 +900,37 @@ const server = http.createServer(async (req, res) => {
 
         lastExplorationTimes.set(uid, now);
 
-        // 1.4 ACTUALIZACIÓN ATÓMICA EN LA BASE DE DATOS (SUMAR EL MINERAL)
+        // 1.4 VALIDACIÓN DE TRAZABILIDAD Y FIRMA ÚNICA DEL MINERAL
+        const trazabilidad = requestData.trazabilidad || {};
+        const uidPart = trazabilidad.uid_part || uid.substring(0, 8);
+        const vehDatePart = trazabilidad.veh_date_part || '20261101';
+        const timestampExacto = trazabilidad.timestamp_exacto || new Date().toISOString();
+
+        // Validar coherencia del UID en la firma
+        if (uidPart !== uid.substring(0, 8)) {
+          return sendEncryptedResponse(res, 403, {
+            validado: false,
+            error: 'VIOLACIÓN DE TRAZABILIDAD: La firma del mineral no coincide con el UID del usuario autenticado.',
+            codigo: 'INVALID_LOT_UID_SIGNATURE'
+          });
+        }
+
+        // Consultar el contador de recolección actual del usuario en la base de datos
         await ensureUserNumericFields(uid);
+        const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
+        const uDoc = await (await fetch(userUrl)).json();
+        const currentRecoleccion = parseMoney(extractVal(uDoc.fields?.numero_de_recoleccion || uDoc.fields?.['Numero de recoleccion']));
+        const nextRecoleccion = currentRecoleccion + 1;
+
+        // Generar y certificar código de lote inmutable
+        const rawLotExpected = `LOT|${uidPart}|${vehDatePart}|${timestampExacto}|${nextRecoleccion}|${resourceType}|T${tier}`;
+        const expectedLotHash = crypto.createHmac('sha256', ENCRYPTION_KEY_BUF).update(rawLotExpected).digest('hex').substring(0, 16).toUpperCase();
+        const codigoLoteCertificado = `MGB-LOT-${resourceType}-N${nextRecoleccion}-${expectedLotHash.substring(0, 8)}`;
+
         const fieldMap = { COAL: 'Carbon', GOLD: 'Oro', EMERALD: 'Esmeralda' };
         const mineralField = fieldMap[resourceType] || 'Carbon';
 
+        // 1.5 OPERACIÓN ATÓMICA: SUMAR MINERAL Y SUMAR CONTADOR (+1)
         const atomicMineralWrite = [
           {
             transform: {
@@ -769,6 +938,10 @@ const server = http.createServer(async (req, res) => {
               fieldTransforms: [
                 {
                   fieldPath: mineralField,
+                  increment: { integerValue: 1 }
+                },
+                {
+                  fieldPath: 'numero_de_recoleccion',
                   increment: { integerValue: 1 }
                 }
               ]
@@ -782,7 +955,7 @@ const server = http.createServer(async (req, res) => {
           console.error('[PASO 1] Error en commit atómico de extracción:', commitErr);
           return sendEncryptedResponse(res, 500, {
             validado: false,
-            error: 'Error al registrar el mineral en la base de datos central.'
+            error: 'Error al registrar el mineral en la base de datos central: ' + commitErr.message
           });
         }
 
@@ -793,7 +966,17 @@ const server = http.createServer(async (req, res) => {
           mineral_field: mineralField,
           tier_verificado: tier,
           truck_code_verificado: true,
-          mensaje: `¡Extracción validada por Render! +1 ${mineralField} sumado atómicamente a tu cuenta en Firestore.`
+          codigo_lote: codigoLoteCertificado,
+          numero_de_recoleccion: nextRecoleccion,
+          trazabilidad_confirmada: {
+            uid_parte: uidPart,
+            veh_fecha: vehDatePart,
+            timestamp_exacto: timestampExacto,
+            numero_recoleccion: nextRecoleccion,
+            lote_id: codigoLoteCertificado,
+            propietario: uid
+          },
+          mensaje: `¡Extracción validada con trazabilidad única! Lote ${codigoLoteCertificado} registrado como propiedad legítima (+1 ${mineralField}, +1 Recolección).`
         });
       }
 

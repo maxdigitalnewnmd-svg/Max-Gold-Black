@@ -13,6 +13,7 @@ signal taller_updated(taller_data: Dictionary)
 signal user_profile_updated(user_data: Dictionary)
 signal player_data_loaded(data: Dictionary)
 signal player_data_saved()
+signal session_state_changed(is_logged_in: bool)
 
 const GestorJuego = preload("res://scripts/gestor_juego.gd")
 const EncriptacionManager = preload("res://scripts/encriptacion_manager.gd")
@@ -69,6 +70,7 @@ var taller_data: Dictionary = {
 }
 
 var market_poll_timer: Timer
+var session_heartbeat_timer: Timer
 var is_online: bool = false
 var is_polling: bool = false
 
@@ -85,8 +87,16 @@ func _ready() -> void:
 	add_child(market_poll_timer)
 	market_poll_timer.timeout.connect(consultar_todo_en_vivo)
 
+	# Validador de sesión obligatoria cada 12 segundos
+	session_heartbeat_timer = Timer.new()
+	session_heartbeat_timer.wait_time = 12.0
+	session_heartbeat_timer.autostart = true
+	add_child(session_heartbeat_timer)
+	session_heartbeat_timer.timeout.connect(_check_session_heartbeat)
+
 	# Consulta inicial encriptada inmediata
 	consultar_todo_en_vivo()
+	_check_session_heartbeat()
 
 func _init_player_id() -> void:
 	# Cargar sesión persistente si existe
@@ -116,11 +126,31 @@ func save_session(user_dict: Dictionary) -> void:
 	if file:
 		file.store_string(JSON.stringify(user_dict))
 		file.close()
+	session_state_changed.emit(true)
 
 func clear_session() -> void:
 	has_session = false
 	if FileAccess.file_exists(SAVE_PATH_SESSION):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH_SESSION))
+	session_state_changed.emit(false)
+
+func _check_session_heartbeat() -> void:
+	if not has_session:
+		session_state_changed.emit(false)
+		return
+	
+	post_encrypted_gateway({
+		"action": "CHECK_SESSION",
+		"uid": current_user_uid
+	}, func(res: Dictionary):
+		if res.get("valida", false):
+			if not has_session:
+				has_session = true
+				session_state_changed.emit(true)
+		else:
+			print("[FirebaseManager] Sesión inválida o expirada detectada por Render Gateway.")
+			clear_session()
+	)
 
 func iniciar_sesion_render(email: String, pass: String, callback: Callable) -> void:
 	var payload = {
@@ -154,6 +184,32 @@ func registrarse_render(email: String, pass: String, confirm_pass: String, usern
 		"password": pass,
 		"confirm_password": confirm_pass,
 		"username": username
+	}
+	post_encrypted_gateway(payload, func(res: Dictionary):
+		if res.get("success", false) and res.has("usuario"):
+			var u: Dictionary = res["usuario"]
+			current_user_uid = u.get("uid", current_user_uid)
+			current_username = u.get("username", current_username)
+			current_email = u.get("correo", current_email)
+			current_role = u.get("tipo", current_role)
+			user_profile = u
+			save_session({
+				"uid": current_user_uid,
+				"username": current_username,
+				"correo": current_email,
+				"tipo": current_role,
+				"token": res.get("token", "")
+			})
+			user_profile_updated.emit(user_profile)
+		callback.call(res)
+	)
+
+func iniciar_sesion_google(email: String, id_token: String, display_name: String, callback: Callable) -> void:
+	var payload = {
+		"action": "AUTH_GOOGLE",
+		"email": email,
+		"id_token": id_token,
+		"display_name": display_name
 	}
 	post_encrypted_gateway(payload, func(res: Dictionary):
 		if res.get("success", false) and res.has("usuario"):
@@ -283,17 +339,36 @@ func get_truck_security_code(tier: int) -> String:
 	truck_security_codes[tier] = code
 	return code
 
-# ----------------- PASO 1: EXTRACCIÓN Y VALIDACIÓN (CAMIONES ➔ RENDER) -----------------
-## Envía el código encriptado del camión a Render. Render descifra, valida probabilidad
-## y actualiza atómicamente la base de datos sumando el mineral al usuario.
+# ----------------- PASO 1: EXTRACCIÓN Y TRAZABILIDAD CRIPTOGRÁFICA (CAMIONES ➔ RENDER) -----------------
+## Genera firma única de lote con UID, fecha del vehículo, timestamp exacto y número secuencial de recolección.
+## Render verifica los datos y ejecuta el incremento atómico del mineral y del contador de recolección en Firestore.
 func reportar_hallazgo_seguro(camioneta_tier: int, tipo_hallazgo: String, callback: Callable) -> void:
 	var truck_code = get_truck_security_code(camioneta_tier)
+	var uid_part = current_user_uid.substr(0, 8)
+	var raw_date = str(user_profile.get("fecha_creacion", "20261101")).replace("-", "").replace(":", "").replace(" ", "")
+	var veh_date_part = raw_date.substr(0, 8)
+	var timestamp_exacto = Time.get_datetime_string_from_system(false, false)
+	var recoleccion_num = int(user_profile.get("numero_de_recoleccion", 0)) + 1
+
+	var raw_lot = "LOT|" + uid_part + "|" + veh_date_part + "|" + timestamp_exacto + "|" + str(recoleccion_num) + "|" + tipo_hallazgo + "|T" + str(camioneta_tier)
+	var key_bytes = EncriptacionManager.get_key_bytes()
+	var lot_hash = EncriptacionManager.compute_hmac_sha256(key_bytes, raw_lot.to_utf8_buffer()).hex_encode().substr(0, 16).to_upper()
+	var codigo_lote = "MGB-LOT-" + tipo_hallazgo + "-N" + str(recoleccion_num) + "-" + lot_hash.substr(0, 8)
+
 	var payload = {
 		"action": "REPORTAR_HALLAZGO",
 		"uid": current_user_uid,
 		"camioneta_tier": camioneta_tier,
 		"tipo_hallazgo": tipo_hallazgo,
 		"truck_security_code": truck_code,
+		"codigo_lote": codigo_lote,
+		"trazabilidad": {
+			"uid_part": uid_part,
+			"veh_date_part": veh_date_part,
+			"timestamp_exacto": timestamp_exacto,
+			"numero_recoleccion": recoleccion_num,
+			"firma_lote": lot_hash
+		},
 		"timestamp_muestra": int(Time.get_unix_time_from_system() * 1000)
 	}
 	post_encrypted_gateway(payload, func(res: Dictionary):

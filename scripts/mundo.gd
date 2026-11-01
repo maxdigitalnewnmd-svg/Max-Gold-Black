@@ -206,6 +206,9 @@ func _setup_auth_flow() -> void:
 		auth_modal.auth_success.connect(_on_auth_success)
 	
 	var firebase_mgr = get_node_or_null("FirebaseManager")
+	if firebase_mgr != null and firebase_mgr.has_signal("session_state_changed"):
+		firebase_mgr.session_state_changed.connect(_on_session_state_changed)
+
 	var has_session: bool = false
 	if firebase_mgr != null and firebase_mgr.has_method("has_active_session"):
 		has_session = firebase_mgr.has_active_session()
@@ -217,6 +220,28 @@ func _setup_auth_flow() -> void:
 			camion_explorador.pause_exploration()
 	else:
 		auth_modal.visible = false
+		if is_instance_valid(camion_explorador):
+			camion_explorador.visible = true
+			camion_explorador.resume_exploration()
+		_update_user_profile_card()
+
+func _on_session_state_changed(is_logged_in: bool) -> void:
+	if not is_logged_in:
+		print("[Mundo] SEGURIDAD: Sesión no detectada o desconectada. Pausando juego.")
+		if is_instance_valid(auth_modal):
+			auth_modal.visible = true
+			if auth_modal.has_method("mostrar_alerta_sesion"):
+				auth_modal.mostrar_alerta_sesion("Sesión requerida: Conexión obligatoria para explorar y escanear en el desierto.")
+		if is_instance_valid(camion_explorador):
+			camion_explorador.pause_exploration()
+			camion_explorador.visible = false
+		if is_instance_valid(comprador_modal):
+			comprador_modal.visible = false
+		if is_instance_valid(taller_modal):
+			taller_modal.visible = false
+	else:
+		if is_instance_valid(auth_modal):
+			auth_modal.visible = false
 		if is_instance_valid(camion_explorador):
 			camion_explorador.visible = true
 			camion_explorador.resume_exploration()
@@ -270,7 +295,8 @@ func _update_user_profile_card() -> void:
 	if is_instance_valid(lbl_boveda_personal):
 		var coins_cnt = profile.get("moneda", GestorJuego.coins)
 		var cash_cnt = profile.get("billete", GestorJuego.cash)
-		lbl_boveda_personal.text = "🪙 Bóveda Oficial: %s Dragcoins • 💵 %s Max COP" % [_format_number(int(coins_cnt)), _format_number(int(cash_cnt))]
+		var rec_cnt = profile.get("numero_de_recoleccion", 0)
+		lbl_boveda_personal.text = "🪙 Bóveda: %s Dragcoins • 💵 %s Max COP • ⛏️ Recolecciones: %s" % [_format_number(int(coins_cnt)), _format_number(int(cash_cnt)), str(rec_cnt)]
 
 func _on_taller_updated_from_firebase(_taller_dict: Dictionary) -> void:
 	_update_taller_cards()
