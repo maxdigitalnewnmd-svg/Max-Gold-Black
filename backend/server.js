@@ -117,6 +117,22 @@ async function executeFirestoreCommit(writes) {
   return data;
 }
 
+// Eliminación atómica de campos temporales en Firestore (Zero Basura y Zero Cargas)
+async function deleteUserField(uid, fieldName) {
+  try {
+    const url = `${FIRESTORE_BASE_URL}/Usuarios/${uid}?updateMask.fieldPaths=${encodeURIComponent(fieldName)}`;
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: {} })
+    });
+    return res.ok;
+  } catch (e) {
+    console.error(`[FIRESTORE] Error al eliminar campo temporal ${fieldName} para ${uid}:`, e);
+    return false;
+  }
+}
+
 // Generación criptográfica inquebrantable del código de Terreno de Extracción por usuario
 function generateLandSecurityCode(uid) {
   const hash = crypto.createHmac('sha256', ENCRYPTION_KEY_BUF)
@@ -1236,6 +1252,136 @@ const server = http.createServer(async (req, res) => {
           success: true,
           usuario: user,
           mensaje: 'Identidad corporativa verificada y protegida por Render.'
+        });
+      }
+
+      // =========================================================================
+      // ACCIÓN: CONVERSIÓN DE 100 MONEDAS A 1 BILLETE (MAX DRAG & CEO RENDER)
+      // 1. Notificación a Max Drag: "Ya llegué a 100 por favor Max Drag conviérteme esto en 1 billete"
+      // 2. Registro de historial en espera en Firestore para no saturar al CEO Render
+      // 3. Render (CEO Soberano) verifica rigurosamente los fondos reales
+      // 4. Operación Atómica: Descontar 100 Monedas y sumar 1 Billete (Max COP)
+      // 5. Eliminación inmediata del historial en espera de la BD (Zero Basura)
+      // =========================================================================
+      if (action === 'SOLICITAR_CONVERSION_MONEDAS' || action === 'CONVERTIR_MONEDAS_A_BILLETE') {
+        const cantidadSolicitada = parseInt(requestData.cantidad_monedas || 100, 10);
+        const bloques = Math.floor(cantidadSolicitada / 100);
+        if (bloques < 1) {
+          return sendEncryptedResponse(res, 400, {
+            success: false,
+            error: 'La conversión mínima es de 100 Monedas por 1 Billete.'
+          });
+        }
+        const monedasADescontar = bloques * 100;
+        const billetesAAcreditar = bloques * 1;
+
+        // 1. Registrar historial en espera en la base de datos (Protección contra saturación y concurrencia)
+        const historialId = `CONV_${uid.substring(0, 6)}_${Date.now()}`;
+        const mensajeSolicitud = requestData.solicitud_texto || 'Ya llegué a 100 por favor Max Drag conviérteme esto en 1 billete';
+        const pendingData = {
+          id: historialId,
+          solicitud: mensajeSolicitud,
+          monedas: monedasADescontar,
+          billetes: billetesAAcreditar,
+          timestamp: Date.now(),
+          estado: 'PENDIENTE_VERIFICACION_CEO'
+        };
+
+        const patchPendingUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}?updateMask.fieldPaths=historial_conversion_pendiente`;
+        await fetch(patchPendingUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              historial_conversion_pendiente: {
+                stringValue: JSON.stringify(pendingData)
+              }
+            }
+          })
+        });
+
+        // 2. Render (el CEO) añade la capa suprema de verificación
+        // Consulta saldo en vivo de Moneda en Usuarios/{uid}
+        await ensureUserCompleteFields(uid);
+        const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
+        const uDoc = await (await fetch(userUrl)).json();
+        const saldoMonedas = parseMoney(extractVal(uDoc.fields?.Moneda));
+
+        if (saldoMonedas < monedasADescontar) {
+          return sendEncryptedResponse(res, 200, {
+            success: false,
+            aprobado: false,
+            actor: 'CEO Render & Max Drag',
+            error: `CEO Render: Rechazado. El saldo real de Monedas (${saldoMonedas}) es insuficiente para convertir ${monedasADescontar} Monedas. Historial conservado para reintento.`,
+            saldo_actual_monedas: saldoMonedas,
+            monedas_requeridas: monedasADescontar
+          });
+        }
+
+        // 3. Render aprueba y ejecuta la Operación Atómica en Firestore
+        const atomicConversionWrites = [
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
+              fieldTransforms: [
+                {
+                  fieldPath: 'Moneda',
+                  increment: { integerValue: -monedasADescontar }
+                },
+                {
+                  fieldPath: 'Billete',
+                  increment: { integerValue: billetesAAcreditar }
+                }
+              ]
+            }
+          },
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/jugadores/jugador_1`,
+              fieldTransforms: [
+                {
+                  fieldPath: 'coins',
+                  increment: { integerValue: -monedasADescontar }
+                },
+                {
+                  fieldPath: 'cash',
+                  increment: { integerValue: billetesAAcreditar }
+                }
+              ]
+            }
+          }
+        ];
+
+        try {
+          await executeFirestoreCommit(atomicConversionWrites);
+        } catch (convErr) {
+          console.error('[CONVERSION] Error en commit atómico:', convErr);
+          // Si hay error, NO se borra el historial para permitir reintento
+          return sendEncryptedResponse(res, 500, {
+            success: false,
+            aprobado: false,
+            actor: 'CEO Render',
+            error: 'Error al procesar la conversión en Firestore. Historial conservado para reintento: ' + convErr.message
+          });
+        }
+
+        // 4. ELIMINAR INMEDIATAMENTE EL HISTORIAL DE LA BASE DE DATOS (Zero Basura)
+        await deleteUserField(uid, 'historial_conversion_pendiente');
+        console.log(`[CEO RENDER] Conversión completada para ${uid}: -${monedasADescontar} Monedas, +${billetesAAcreditar} Billete. Historial eliminado de Firestore.`);
+
+        const nuevoSaldoMoneda = saldoMonedas - monedasADescontar;
+        const nuevoSaldoBillete = parseMoney(extractVal(uDoc.fields?.Billete)) + billetesAAcreditar;
+
+        return sendEncryptedResponse(res, 200, {
+          success: true,
+          aprobado: true,
+          actor: 'CEO Render (con visto bueno de Max Drag)',
+          monedas_convertidas: monedasADescontar,
+          billetes_acreditados: billetesAAcreditar,
+          nuevo_saldo_moneda: nuevoSaldoMoneda,
+          nuevo_saldo_billete: nuevoSaldoBillete,
+          historial_eliminado: true,
+          mensaje: `¡Conversión verificada y aprobada por el CEO Render! Max Drag procesó la solicitud: se debitaron -${monedasADescontar} Monedas y se acreditó +${billetesAAcreditar} Billete. El historial en espera fue eliminado inmediatamente de la base de datos.`
         });
       }
 

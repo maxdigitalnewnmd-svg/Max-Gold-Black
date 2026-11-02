@@ -200,6 +200,8 @@ func _setup_hud() -> void:
 		firebase_mgr.taller_updated.connect(_on_taller_updated_from_firebase)
 		if firebase_mgr.has_signal("user_profile_updated"):
 			firebase_mgr.user_profile_updated.connect(_on_user_profile_updated)
+		if firebase_mgr.has_signal("conversion_monedas_completada"):
+			firebase_mgr.conversion_monedas_completada.connect(_on_conversion_monedas_completada)
 	_update_taller_cards()
 
 func _setup_auth_flow() -> void:
@@ -291,6 +293,12 @@ func _set_modal_tab(tab_idx: int) -> void:
 		_update_user_profile_card()
 
 func _on_user_profile_updated(_profile: Dictionary) -> void:
+	_update_user_profile_card()
+
+func _on_conversion_monedas_completada(monedas_restadas: int, billetes_sumados: int) -> void:
+	print("[Mundo] ¡Conversión exitosa! -%d Monedas -> +%d Billete. Verificado por CEO Render." % [monedas_restadas, billetes_sumados])
+	if is_instance_valid(lbl_boveda_personal):
+		lbl_boveda_personal.text = "🪙 ➔ 💵 Max Drag: ¡%d Dragcoins convertidas a +%d Max COP! Verificado por CEO Render." % [monedas_restadas, billetes_sumados]
 	_update_user_profile_card()
 
 func _update_user_profile_card() -> void:

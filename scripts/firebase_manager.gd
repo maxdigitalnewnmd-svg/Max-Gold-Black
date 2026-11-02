@@ -15,6 +15,9 @@ signal player_data_loaded(data: Dictionary)
 signal player_data_saved()
 signal session_state_changed(is_logged_in: bool)
 signal offline_extraction_available(offline_data: Dictionary)
+signal conversion_monedas_completada(monedas_restadas: int, billetes_sumados: int)
+
+var is_converting_coins: bool = false
 
 const GestorJuego = preload("res://scripts/gestor_juego.gd")
 const EncriptacionManager = preload("res://scripts/encriptacion_manager.gd")
@@ -322,6 +325,45 @@ func consultar_usuario_en_vivo() -> void:
 			GestorJuego.cash = cash_val
 			
 			user_profile_updated.emit(user_profile)
+
+			# Auto-verificación de conversión si llega a 100 Monedas
+			if coins_val >= 100 and not is_converting_coins:
+				solicitar_conversion_monedas_a_billete()
+	)
+
+## Notifica a Max Drag y al CEO Render para convertir 100 Monedas en 1 Billete.
+## Render verifica los fondos, ejecuta la operación atómica y elimina inmediatamente el historial de Firestore.
+func solicitar_conversion_monedas_a_billete(callback: Callable = Callable()) -> void:
+	if is_converting_coins:
+		return
+	var monedas_actuales = int(user_profile.get("moneda", GestorJuego.coins))
+	if monedas_actuales < 100:
+		return
+
+	is_converting_coins = true
+	var payload = {
+		"action": "SOLICITAR_CONVERSION_MONEDAS",
+		"uid": current_user_uid,
+		"cantidad_monedas": 100,
+		"solicitud_texto": "Ya llegué a 100 por favor Max Drag conviérteme esto en 1 billete"
+	}
+	print("[FirebaseManager] Notificando a Max Drag: 100 Dragcoins -> 1 Max COP...")
+	post_encrypted_gateway(payload, func(res: Dictionary):
+		is_converting_coins = false
+		if res.get("success", false) and res.get("aprobado", false):
+			var m_desc = int(res.get("monedas_convertidas", 100))
+			var b_acre = int(res.get("billetes_acreditados", 1))
+			if res.has("nuevo_saldo_moneda"):
+				user_profile["moneda"] = res["nuevo_saldo_moneda"]
+				GestorJuego.coins = int(res["nuevo_saldo_moneda"])
+			if res.has("nuevo_saldo_billete"):
+				user_profile["billete"] = res["nuevo_saldo_billete"]
+				GestorJuego.cash = int(res["nuevo_saldo_billete"])
+			user_profile_updated.emit(user_profile)
+			conversion_monedas_completada.emit(m_desc, b_acre)
+			print("[FirebaseManager] ¡Conversión aprobada por Render! -%d Monedas, +%d Billete." % [m_desc, b_acre])
+		if callback.is_valid():
+			callback.call(res)
 	)
 
 ## Verifica si el usuario ha adquirido una camioneta específica en el Taller
