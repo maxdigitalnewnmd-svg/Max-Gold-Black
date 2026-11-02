@@ -105,18 +105,111 @@ async function executeFirestoreCommit(writes) {
   return data;
 }
 
-// Asegurar que los campos numéricos de Usuarios existan como integerValue para soportar increment()
-async function ensureUserNumericFields(uid) {
+// Generación criptográfica inquebrantable del código de Terreno de Extracción por usuario
+function generateLandSecurityCode(uid) {
+  const hash = crypto.createHmac('sha256', ENCRYPTION_KEY_BUF)
+    .update(`TERRENO_EXTRACCION_V1:${uid}:${CEO_CONFIG.sovereign_key}`)
+    .digest('hex')
+    .toUpperCase();
+  return `MGB-TR-${hash.substring(0, 16)}`;
+}
+
+// Extracción de 2 primeras, 2 del medio y 2 últimas cifras del código de terreno
+function extractLandSegments(landCode) {
+  if (!landCode || typeof landCode !== 'string' || landCode.length < 6) {
+    return 'TR0000';
+  }
+  const first2 = landCode.substring(0, 2);
+  const midStart = Math.floor((landCode.length - 2) / 2);
+  const mid2 = landCode.substring(midStart, midStart + 2);
+  const last2 = landCode.substring(landCode.length - 2);
+  return `${first2}${mid2}${last2}`;
+}
+
+// Gobernanza de Usuarios: Auto-aprovisionamiento y garantía de integridad por Render CEO
+// Soporta escala masiva (1,000 a 10,000 usuarios) asegurando que no se pierda ni un recurso
+async function ensureUserCompleteFields(uid, candidateData = {}) {
+  const isCeoUid = (uid === CEO_CONFIG.uid);
   const url = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
   const res = await fetch(url);
-  if (!res.ok) return;
+  const defaultLandCode = generateLandSecurityCode(uid);
+
+  if (!res.ok) {
+    // Si el usuario no existe en Usuarios, crearlo con todos los campos requeridos
+    const nowStr = isCeoUid ? CEO_CONFIG.fecha_creacion : new Date().toISOString();
+    const safeUsername = isCeoUid ? CEO_CONFIG.username : (candidateData.username && candidateData.username !== 'Dramax' && candidateData.username !== 'CEO' ? candidateData.username : `Minero_${uid.substring(0, 5)}`);
+    const safeEmail = isCeoUid ? CEO_CONFIG.correo : (candidateData.correo && candidateData.correo !== CEO_CONFIG.correo ? candidateData.correo : `usuario_${uid.substring(0, 6)}@maxgoldblack.com`);
+    const safeTipo = isCeoUid ? CEO_CONFIG.tipo : 'Minero';
+
+    const newDocFields = {
+      UID: { stringValue: uid },
+      Username: { stringValue: safeUsername },
+      correo: { stringValue: safeEmail },
+      Tipo: { stringValue: safeTipo },
+      fecha_creacion: { stringValue: nowStr },
+      Tierra_de_extraccion: { stringValue: defaultLandCode },
+      Recargar: { stringValue: '1000000' },
+      Carbon: { integerValue: 0 },
+      Oro: { integerValue: 0 },
+      Esmeralda: { integerValue: 0 },
+      Moneda: { integerValue: 0 },
+      Billete: { integerValue: 0 },
+      numero_de_recoleccion: { integerValue: 0 },
+      'Numero de recoleccion': { stringValue: '0' }
+    };
+
+    await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: newDocFields })
+    });
+
+    return {
+      uid,
+      username: safeUsername,
+      correo: safeEmail,
+      tipo: safeTipo,
+      fecha_creacion: nowStr,
+      tierra_de_extraccion: defaultLandCode,
+      recargar: '1000000',
+      carbon: 0,
+      oro: 0,
+      esmeralda: 0,
+      moneda: 0,
+      billete: 0,
+      numero_de_recoleccion: 0,
+      es_ceo: isCeoUid
+    };
+  }
+
+  // Si el usuario existe, validar minuciosamente que no le falte ningún campo requerido
   const doc = await res.json();
   const fields = doc.fields || {};
-
   const fieldsToFix = {};
-  const numericKeys = ['Carbon', 'Oro', 'Esmeralda', 'Moneda', 'Billete', 'numero_de_recoleccion'];
   let needsPatch = false;
 
+  // 1. Tierra de extracción (Código encriptado único)
+  const currentLandCode = extractVal(fields.Tierra_de_extraccion);
+  if (!currentLandCode || currentLandCode.trim() === '') {
+    fieldsToFix['Tierra_de_extraccion'] = { stringValue: defaultLandCode };
+    needsPatch = true;
+  }
+
+  // 2. Recargar
+  if (!fields.Recargar) {
+    fieldsToFix['Recargar'] = { stringValue: '1000000' };
+    needsPatch = true;
+  }
+
+  // 3. Fecha de creación
+  if (!fields.fecha_creacion) {
+    const fCreacion = isCeoUid ? CEO_CONFIG.fecha_creacion : (doc.createTime || new Date().toISOString());
+    fieldsToFix['fecha_creacion'] = { stringValue: fCreacion };
+    needsPatch = true;
+  }
+
+  // 4. Campos numéricos para operaciones atómicas (Preservando 100% de los recursos existentes)
+  const numericKeys = ['Carbon', 'Oro', 'Esmeralda', 'Moneda', 'Billete', 'numero_de_recoleccion'];
   for (const k of numericKeys) {
     if (!fields[k] || fields[k].integerValue === undefined) {
       const val = parseMoney(extractVal(fields[k]));
@@ -125,14 +218,37 @@ async function ensureUserNumericFields(uid) {
     }
   }
 
+  // 5. Aplicar parche selectivo solo si es necesario (sin tocar recursos ni montos)
   if (needsPatch) {
-    const mask = Object.keys(fieldsToFix).map(k => `updateMask.fieldPaths=${k}`).join('&');
+    const mask = Object.keys(fieldsToFix).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
     await fetch(`${url}?${mask}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields: fieldsToFix })
     });
   }
+
+  return {
+    uid,
+    username: isCeoUid ? CEO_CONFIG.username : (extractVal(fields.Username) || candidateData.username || `Minero_${uid.substring(0, 5)}`),
+    correo: isCeoUid ? CEO_CONFIG.correo : (extractVal(fields.correo) || candidateData.correo || `usuario_${uid.substring(0, 6)}@maxgoldblack.com`),
+    tipo: isCeoUid ? CEO_CONFIG.tipo : (extractVal(fields.Tipo) || 'Minero'),
+    fecha_creacion: extractVal(fields.fecha_creacion) || (isCeoUid ? CEO_CONFIG.fecha_creacion : doc.createTime),
+    tierra_de_extraccion: fieldsToFix.Tierra_de_extraccion ? defaultLandCode : (currentLandCode || defaultLandCode),
+    recargar: extractVal(fields.Recargar) || '1000000',
+    moneda: parseMoney(extractVal(fields.Moneda)),
+    billete: parseMoney(extractVal(fields.Billete)),
+    carbon: parseMoney(extractVal(fields.Carbon)),
+    oro: parseMoney(extractVal(fields.Oro)),
+    esmeralda: parseMoney(extractVal(fields.Esmeralda)),
+    numero_de_recoleccion: parseMoney(extractVal(fields.numero_de_recoleccion || fields['Numero de recoleccion'])),
+    es_ceo: isCeoUid
+  };
+}
+
+// Wrapper retrocompatible para incrementos
+async function ensureUserNumericFields(uid) {
+  return await ensureUserCompleteFields(uid);
 }
 
 // ----------------- MÓDULO CRIPTOGRÁFICO MILITAR (AES-256-CBC + HMAC-SHA256) -----------------
@@ -225,50 +341,7 @@ function getRequestBody(req) {
 
 // ----------------- GOBERNANZA DE USUARIOS Y VALIDACIÓN DEL CEO -----------------
 async function getOrSyncUser(uid, candidateData = {}) {
-  const isCeoUid = (uid === CEO_CONFIG.uid);
-  const url = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
-  const res = await fetch(url);
-
-  if (res.ok) {
-    const doc = await res.json();
-    const fields = doc.fields || {};
-
-    let fechaCreacion = extractVal(fields.fecha_creacion);
-    if (!fechaCreacion) {
-      fechaCreacion = isCeoUid ? CEO_CONFIG.fecha_creacion : (doc.createTime || new Date().toISOString());
-      await fetch(`${url}?updateMask.fieldPaths=fecha_creacion`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { fecha_creacion: { stringValue: fechaCreacion } } })
-      });
-    }
-
-    const truckCodes = {
-      1: generateTruckSecurityCode(uid, 1),
-      2: generateTruckSecurityCode(uid, 2),
-      3: generateTruckSecurityCode(uid, 3),
-      4: generateTruckSecurityCode(uid, 4)
-    };
-
-    const userData = {
-      uid: uid,
-      username: isCeoUid ? CEO_CONFIG.username : (extractVal(fields.Username) || candidateData.username || 'Minero'),
-      correo: isCeoUid ? CEO_CONFIG.correo : (extractVal(fields.correo) || candidateData.correo || 'minero@maxgoldblack.com'),
-      tipo: isCeoUid ? CEO_CONFIG.tipo : (extractVal(fields.Tipo) || 'Minero'),
-      fecha_creacion: fechaCreacion,
-      moneda: parseMoney(extractVal(fields.Moneda)),
-      billete: parseMoney(extractVal(fields.Billete)),
-      carbon: parseMoney(extractVal(fields.Carbon)),
-      oro: parseMoney(extractVal(fields.Oro)),
-      esmeralda: parseMoney(extractVal(fields.Esmeralda)),
-      numero_de_recoleccion: parseMoney(extractVal(fields.numero_de_recoleccion || fields['Numero de recoleccion'])),
-      es_ceo: isCeoUid,
-      truck_security_codes: truckCodes,
-      inmutable: true
-    };
-
-    return userData;
-  }
+  const syncData = await ensureUserCompleteFields(uid, candidateData);
 
   const truckCodes = {
     1: generateTruckSecurityCode(uid, 1),
@@ -277,84 +350,8 @@ async function getOrSyncUser(uid, candidateData = {}) {
     4: generateTruckSecurityCode(uid, 4)
   };
 
-  // Si no existe y es el CEO, crearlo con datos fundacionales inmutables
-  if (isCeoUid) {
-    const ceoFields = {
-      UID: { stringValue: CEO_CONFIG.uid },
-      Username: { stringValue: CEO_CONFIG.username },
-      correo: { stringValue: CEO_CONFIG.correo },
-      Tipo: { stringValue: CEO_CONFIG.tipo },
-      fecha_creacion: { stringValue: CEO_CONFIG.fecha_creacion },
-      Moneda: { integerValue: 0 },
-      Billete: { integerValue: 0 },
-      Carbon: { integerValue: 0 },
-      Oro: { integerValue: 0 },
-      Esmeralda: { integerValue: 0 },
-      numero_de_recoleccion: { integerValue: 0 }
-    };
-
-    await fetch(url, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields: ceoFields })
-    });
-
-    return {
-      uid: CEO_CONFIG.uid,
-      username: CEO_CONFIG.username,
-      correo: CEO_CONFIG.correo,
-      tipo: CEO_CONFIG.tipo,
-      fecha_creacion: CEO_CONFIG.fecha_creacion,
-      moneda: 0,
-      billete: 0,
-      carbon: 0,
-      oro: 0,
-      esmeralda: 0,
-      es_ceo: true,
-      truck_security_codes: truckCodes,
-      inmutable: true
-    };
-  }
-
-  // Si es un usuario nuevo, registrarlo como Minero con fecha de creación actual
-  const nowStr = new Date().toISOString();
-  const safeUsername = (candidateData.username && candidateData.username !== 'Dramax' && candidateData.username !== 'CEO')
-    ? candidateData.username : `Minero_${uid.substring(0, 5)}`;
-  const safeEmail = (candidateData.correo && candidateData.correo !== CEO_CONFIG.correo)
-    ? candidateData.correo : `usuario_${uid.substring(0, 6)}@maxgoldblack.com`;
-
-  const newFields = {
-    UID: { stringValue: uid },
-    Username: { stringValue: safeUsername },
-    correo: { stringValue: safeEmail },
-    Tipo: { stringValue: 'Minero' },
-    fecha_creacion: { stringValue: nowStr },
-    Moneda: { integerValue: 0 },
-    Billete: { integerValue: 0 },
-    Carbon: { integerValue: 0 },
-    Oro: { integerValue: 0 },
-    Esmeralda: { integerValue: 0 },
-    numero_de_recoleccion: { integerValue: 0 }
-  };
-
-  await fetch(url, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields: newFields })
-  });
-
   return {
-    uid,
-    username: safeUsername,
-    correo: safeEmail,
-    tipo: 'Minero',
-    fecha_creacion: nowStr,
-    moneda: 0,
-    billete: 0,
-    carbon: 0,
-    oro: 0,
-    esmeralda: 0,
-    es_ceo: false,
+    ...syncData,
     truck_security_codes: truckCodes,
     inmutable: true
   };
@@ -564,6 +561,11 @@ async function fetchGestorData() {
 
   const precios = { COAL: 30, GOLD: 50, EMERALD: 100 };
   const boveda = { COAL: 1000000, GOLD: 1000000, EMERALD: 1000000 };
+  const extraccionAzar = {
+    COAL: [1, 2, 3, 4, 5],
+    GOLD: [1, 2, 3, 4, 5],
+    EMERALD: [1, 2, 3, 4, 5]
+  };
 
   for (const doc of docs) {
     const docId = doc.name.split('/').pop();
@@ -578,9 +580,20 @@ async function fetchGestorData() {
     if (fields.Costo_Carbon) precios.COAL = parseMoney(extractVal(fields.Costo_Carbon));
     if (fields.Costo_oro || fields.Costo_Oro) precios.GOLD = parseMoney(extractVal(fields.Costo_oro || fields.Costo_Oro));
     if (fields.Costo_esmeralda || fields.Costo_Esmeralda) precios.EMERALD = parseMoney(extractVal(fields.Costo_esmeralda || fields.Costo_Esmeralda));
+
+    if (fields.extraccion_al_azar && fields.extraccion_al_azar.arrayValue) {
+      const arr = (fields.extraccion_al_azar.arrayValue.values || [])
+        .map(v => parseInt(extractVal(v), 10))
+        .filter(n => !isNaN(n) && n > 0);
+      if (arr.length > 0) {
+        if (docId === 'UoYSR5Skd0jKQdMnQw2T' || fields.Costo_Carbon) extraccionAzar.COAL = arr;
+        if (docId === 'wTGYvGgv7ngFhMKn3FnU' || fields.Costo_oro || fields.Costo_Oro) extraccionAzar.GOLD = arr;
+        if (docId === 'enuLDJDSQGPJzaTJuMaJ' || fields.Costo_esmeralda || fields.Costo_Esmeralda) extraccionAzar.EMERALD = arr;
+      }
+    }
   }
 
-  return { precios, boveda };
+  return { precios, boveda, extraccionAzar };
 }
 
 async function fetchTallerData() {
@@ -915,22 +928,31 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        // Consultar el contador de recolección actual del usuario en la base de datos
-        await ensureUserNumericFields(uid);
+        // Consultar el perfil de usuario y contador de recolección actual
+        const userSync = await ensureUserCompleteFields(uid);
         const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
         const uDoc = await (await fetch(userUrl)).json();
         const currentRecoleccion = parseMoney(extractVal(uDoc.fields?.numero_de_recoleccion || uDoc.fields?.['Numero de recoleccion']));
         const nextRecoleccion = currentRecoleccion + 1;
 
-        // Generar y certificar código de lote inmutable
-        const rawLotExpected = `LOT|${uidPart}|${vehDatePart}|${timestampExacto}|${nextRecoleccion}|${resourceType}|T${tier}`;
+        // Código de terreno y fragmento de seguridad (2 primeras, 2 del medio, 2 últimas)
+        const landCode = extractVal(uDoc.fields?.Tierra_de_extraccion) || userSync.tierra_de_extraccion || generateLandSecurityCode(uid);
+        const landSegment = extractLandSegments(landCode);
+
+        // Obtener cantidad aleatoria desde Gestor (extraccion_al_azar)
+        const gestor = await fetchGestorData();
+        const pool = gestor.extraccionAzar[resourceType] || [1, 2, 3, 4, 5];
+        const cantidadExtraida = pool[Math.floor(Math.random() * pool.length)] || 1;
+
+        // Generar y certificar código de lote inmutable incorporando el segmento de terreno
+        const rawLotExpected = `LOT|${uidPart}|${vehDatePart}|${timestampExacto}|${nextRecoleccion}|${resourceType}|T${tier}|${landSegment}`;
         const expectedLotHash = crypto.createHmac('sha256', ENCRYPTION_KEY_BUF).update(rawLotExpected).digest('hex').substring(0, 16).toUpperCase();
-        const codigoLoteCertificado = `MGB-LOT-${resourceType}-N${nextRecoleccion}-${expectedLotHash.substring(0, 8)}`;
+        const codigoLoteCertificado = `MGB-LOT-${resourceType}-${landSegment}-N${nextRecoleccion}-${expectedLotHash.substring(0, 8)}`;
 
         const fieldMap = { COAL: 'Carbon', GOLD: 'Oro', EMERALD: 'Esmeralda' };
         const mineralField = fieldMap[resourceType] || 'Carbon';
 
-        // 1.5 OPERACIÓN ATÓMICA: SUMAR MINERAL Y SUMAR CONTADOR (+1)
+        // 1.5 OPERACIÓN ATÓMICA: SUMAR MINERAL SEGÚN EXTRACCIÓN AL AZAR Y SUMAR CONTADOR (+1)
         const atomicMineralWrite = [
           {
             transform: {
@@ -938,7 +960,7 @@ const server = http.createServer(async (req, res) => {
               fieldTransforms: [
                 {
                   fieldPath: mineralField,
-                  increment: { integerValue: 1 }
+                  increment: { integerValue: cantidadExtraida }
                 },
                 {
                   fieldPath: 'numero_de_recoleccion',
@@ -964,8 +986,11 @@ const server = http.createServer(async (req, res) => {
           validado: true,
           mineral: resourceType,
           mineral_field: mineralField,
+          cantidad_extraida: cantidadExtraida,
           tier_verificado: tier,
           truck_code_verificado: true,
+          tierra_codigo: landCode,
+          tierra_segmento: landSegment,
           codigo_lote: codigoLoteCertificado,
           numero_de_recoleccion: nextRecoleccion,
           trazabilidad_confirmada: {
@@ -973,10 +998,12 @@ const server = http.createServer(async (req, res) => {
             veh_fecha: vehDatePart,
             timestamp_exacto: timestampExacto,
             numero_recoleccion: nextRecoleccion,
+            tierra_segmento: landSegment,
+            cantidad_extraida: cantidadExtraida,
             lote_id: codigoLoteCertificado,
             propietario: uid
           },
-          mensaje: `¡Extracción validada con trazabilidad única! Lote ${codigoLoteCertificado} registrado como propiedad legítima (+1 ${mineralField}, +1 Recolección).`
+          mensaje: `¡Extracción validada con trazabilidad única y terreno verificado! Lote ${codigoLoteCertificado} (+${cantidadExtraida} ${mineralField}, +1 Recolección).`
         });
       }
 

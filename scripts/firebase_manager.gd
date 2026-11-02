@@ -339,21 +339,44 @@ func get_truck_security_code(tier: int) -> String:
 	truck_security_codes[tier] = code
 	return code
 
+## Obtiene el código encriptado individual de seguridad del terreno del usuario
+func get_land_security_code() -> String:
+	var code = str(user_profile.get("tierra_de_extraccion", user_profile.get("Tierra_de_extraccion", "")))
+	if not code.is_empty():
+		return code
+	var key_bytes = EncriptacionManager.get_key_bytes()
+	var raw_msg = "TERRENO_EXTRACCION_V1:" + current_user_uid + ":M4xG0ldBl4ckTatacoaDesert2026Key"
+	var hmac_bytes = EncriptacionManager.compute_hmac_sha256(key_bytes, raw_msg.to_utf8_buffer())
+	var full_hex = hmac_bytes.hex_encode().to_upper()
+	return "MGB-TR-" + full_hex.substr(0, 16)
+
+## Extrae las 2 primeras, 2 del medio y 2 últimas cifras del código de terreno
+func extract_land_segment(land_code: String) -> String:
+	if land_code.length() < 6:
+		return "TR0000"
+	var first2 = land_code.substr(0, 2)
+	var mid_idx = int((land_code.length() - 2) / 2)
+	var mid2 = land_code.substr(mid_idx, 2)
+	var last2 = land_code.substr(land_code.length() - 2, 2)
+	return first2 + mid2 + last2
+
 # ----------------- PASO 1: EXTRACCIÓN Y TRAZABILIDAD CRIPTOGRÁFICA (CAMIONES ➔ RENDER) -----------------
-## Genera firma única de lote con UID, fecha del vehículo, timestamp exacto y número secuencial de recolección.
-## Render verifica los datos y ejecuta el incremento atómico del mineral y del contador de recolección en Firestore.
+## Genera firma única de lote con UID, fecha del vehículo, timestamp exacto, contador y token de terreno (2 primeras, 2 medio, 2 últimas).
+## Render verifica los datos y ejecuta el incremento atómico del mineral (según extraccion_al_azar de Gestor) y del contador de recolección en Firestore.
 func reportar_hallazgo_seguro(camioneta_tier: int, tipo_hallazgo: String, callback: Callable) -> void:
 	var truck_code = get_truck_security_code(camioneta_tier)
+	var land_code = get_land_security_code()
+	var land_segment = extract_land_segment(land_code)
 	var uid_part = current_user_uid.substr(0, 8)
 	var raw_date = str(user_profile.get("fecha_creacion", "20261101")).replace("-", "").replace(":", "").replace(" ", "")
 	var veh_date_part = raw_date.substr(0, 8)
 	var timestamp_exacto = Time.get_datetime_string_from_system(false, false)
 	var recoleccion_num = int(user_profile.get("numero_de_recoleccion", 0)) + 1
 
-	var raw_lot = "LOT|" + uid_part + "|" + veh_date_part + "|" + timestamp_exacto + "|" + str(recoleccion_num) + "|" + tipo_hallazgo + "|T" + str(camioneta_tier)
+	var raw_lot = "LOT|" + uid_part + "|" + veh_date_part + "|" + timestamp_exacto + "|" + str(recoleccion_num) + "|" + tipo_hallazgo + "|T" + str(camioneta_tier) + "|" + land_segment
 	var key_bytes = EncriptacionManager.get_key_bytes()
 	var lot_hash = EncriptacionManager.compute_hmac_sha256(key_bytes, raw_lot.to_utf8_buffer()).hex_encode().substr(0, 16).to_upper()
-	var codigo_lote = "MGB-LOT-" + tipo_hallazgo + "-N" + str(recoleccion_num) + "-" + lot_hash.substr(0, 8)
+	var codigo_lote = "MGB-LOT-" + tipo_hallazgo + "-" + land_segment + "-N" + str(recoleccion_num) + "-" + lot_hash.substr(0, 8)
 
 	var payload = {
 		"action": "REPORTAR_HALLAZGO",
@@ -367,6 +390,8 @@ func reportar_hallazgo_seguro(camioneta_tier: int, tipo_hallazgo: String, callba
 			"veh_date_part": veh_date_part,
 			"timestamp_exacto": timestamp_exacto,
 			"numero_recoleccion": recoleccion_num,
+			"tierra_codigo": land_code,
+			"tierra_segmento": land_segment,
 			"firma_lote": lot_hash
 		},
 		"timestamp_muestra": int(Time.get_unix_time_from_system() * 1000)
