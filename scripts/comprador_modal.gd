@@ -239,8 +239,8 @@ func _ejecutar_cierre_offline_max_drag() -> void:
 				if is_instance_valid(max_drag_anim):
 					max_drag_anim.trigger_approval_nod()
 				var pagado = int(res.get("monto_pagado", offline_total_pago))
-				target_dialogue_text = "Max Drag (CFO): ¡Liquidación total aprobada bajo regla atómica! Se acreditaron $%d Max COP a tu saldo oficial." % pagado
-				GestorJuego.add_cash(pagado)
+				target_dialogue_text = "Max Drag (CFO): ¡Liquidación total aprobada! Franklin General te pagó +%d Dragcoins (Monedas). Al llegar a 100, las convertiremos en Billetes con el CEO Render." % pagado
+				GestorJuego.add_coins(pagado)
 				btn_vender.disabled = false
 				btn_vender.text = "✔ Finalizar y Continuar"
 			else:
@@ -295,8 +295,8 @@ func _on_max_drag_cierre_recibido(res: Dictionary) -> void:
 		if is_instance_valid(max_drag_anim):
 			max_drag_anim.trigger_approval_nod()
 
-		target_dialogue_text = res.get("mensaje", "¡Transacción Atómica Completada! Max Drag validó liquidez y entrega. Has recibido $%d." % monto_ganado)
-		GestorJuego.add_cash(monto_ganado)
+		target_dialogue_text = res.get("mensaje", "¡Transacción Atómica Completada! Franklin pagó +%d Dragcoins (Monedas). Al llegar a 100, se convertirán en Billetes con el CEO Render." % monto_ganado)
+		GestorJuego.add_coins(monto_ganado)
 		btn_vender.disabled = false
 		btn_vender.text = "✔ Finalizar y Continuar"
 	else:

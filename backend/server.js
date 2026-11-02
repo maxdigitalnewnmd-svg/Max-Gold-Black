@@ -1977,9 +1977,10 @@ const server = http.createServer(async (req, res) => {
         }
 
         // --- PASO 4: REGLA ESTRICTA DE OPERACIONES ATÓMICAS EN BASE DE DATOS ---
-        // ESTÁ PROHIBIDO SOBREESCRIBIR MONTOS FIJOS. SOLO FUNCIONES DE INCREMENTO / DECREMENTO.
+        // REGLA FUNDAMENTAL: FRANKLIN JAMÁS OTORGA BILLETES, INCLUSO EN EL GENERAL SOLO MONEDA
+        // Cuando el usuario acumula 100 Monedas, Max Drag y el CEO Render las convierten en 1 Billete.
         const atomicTransactions = [
-          // 1. Al Usuario: Restar cantidad exacta de mineral y sumar monto exacto de dinero (Billete)
+          // 1. Al Usuario: Restar cantidad exacta de mineral y sumar MONEDAS (Dragcoins)
           {
             transform: {
               document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
@@ -1989,13 +1990,13 @@ const server = http.createServer(async (req, res) => {
                   increment: { integerValue: -cantidadVenta }
                 },
                 {
-                  fieldPath: 'Billete',
+                  fieldPath: 'Moneda',
                   increment: { integerValue: montoTotal }
                 }
               ]
             }
           },
-          // 2. A la Bóveda del Gestor: Restar el monto exacto del pago
+          // 2. A la Bóveda del Gestor: Restar el monto exacto del pago de liquidez
           {
             transform: {
               document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Gestor/boveda_del_Gestor`,
@@ -2007,13 +2008,13 @@ const server = http.createServer(async (req, res) => {
               ]
             }
           },
-          // 3. A jugadores/jugador_1 (compatibilidad HUD): Sumar cash
+          // 3. A jugadores/jugador_1 (compatibilidad HUD): Sumar coins (Monedas)
           {
             transform: {
               document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/jugadores/jugador_1`,
               fieldTransforms: [
                 {
-                  fieldPath: 'cash',
+                  fieldPath: 'coins',
                   increment: { integerValue: montoTotal }
                 }
               ]
@@ -2046,8 +2047,8 @@ const server = http.createServer(async (req, res) => {
           recarga_soberana_aplicada: recargaSoberanaAplicada,
           monto_inyectado_soberano: montoInyeccionSoberana,
           mensaje: recargaSoberanaAplicada
-            ? `¡Transacción Aprobada! Max Drag notificó fondos insuficientes en Franklin; el CEO Render verificó y aprobó inyección soberana de +$${montoInyeccionSoberana} a la Bóveda del Gestor manteniendo intacto el campo 'Recargar' (1,000,000). Has recibido +$${montoTotal} Max COP.`
-            : `¡Transacción Atómica Completada! Max Drag aprobó el desembolso. Franklin recibió 1 saco de ${fieldName}. Se debitó 1 de tu inventario y se sumaron +$${montoTotal} Max COP. La Bóveda fue descontada en -$${montoTotal} bajo regla atómica inquebrantable.`
+            ? `¡Transacción Aprobada! Max Drag notificó fondos insuficientes en Franklin; el CEO Render verificó y aprobó inyección soberana de +$${montoInyeccionSoberana} a la Bóveda del Gestor manteniendo intacto el campo 'Recargar' (1,000,000). Franklin te pagó +${montoTotal} Dragcoins (Monedas). Al llegar a 100 Monedas se convertirán en Billetes.`
+            : `¡Transacción Atómica Completada! Max Drag aprobó el desembolso. Franklin Martínez pagó +${montoTotal} Dragcoins (Monedas). Franklin jamás otorga Billetes; al llegar a 100 Monedas, Max Drag y el CEO Render las convertirán en 1 Billete (Max COP).`
         });
       }
 
@@ -2221,9 +2222,10 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
-        // 3. OPERACIÓN ATÓMICA DEFINITIVA: Descontar los 3 minerales, pagar billetes al usuario y descontar de la Bóveda
+        // 3. OPERACIÓN ATÓMICA DEFINITIVA: Descontar los 3 minerales, pagar MONEDAS al usuario y descontar de la Bóveda
+        // REGLA FUNDAMENTAL: Franklin jamás otorga billetes, incluso en el general solo moneda.
         const userTransforms = [
-          { fieldPath: 'Billete', increment: { integerValue: totalPago } }
+          { fieldPath: 'Moneda', increment: { integerValue: totalPago } }
         ];
         if (carbonQty > 0) userTransforms.push({ fieldPath: 'Carbon', increment: { integerValue: -carbonQty } });
         if (oroQty > 0) userTransforms.push({ fieldPath: 'Oro', increment: { integerValue: -oroQty } });
@@ -2248,7 +2250,7 @@ const server = http.createServer(async (req, res) => {
             transform: {
               document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/jugadores/jugador_1`,
               fieldTransforms: [
-                { fieldPath: 'cash', increment: { integerValue: totalPago } }
+                { fieldPath: 'coins', increment: { integerValue: totalPago } }
               ]
             }
           }
@@ -2277,7 +2279,7 @@ const server = http.createServer(async (req, res) => {
             oro: oroQty,
             esmeralda: esmeraldaQty
           },
-          mensaje: `¡Liquidación Total Offline Exitosa! Franklin General compró todo el cargamento (${carbonQty} Carbón, ${oroQty} Oro, ${esmeraldaQty} Esmeralda) por $${totalPago} Max COP, certificado y aprobado por Render.`
+          mensaje: `¡Liquidación Total Offline Exitosa! Franklin General compró todo el cargamento (${carbonQty} Carbón, ${oroQty} Oro, ${esmeraldaQty} Esmeralda) por +${totalPago} Dragcoins (Monedas). Franklin jamás otorga Billetes; al acumular 100 Monedas, Max Drag y el CEO Render las convertirán en 1 Billete.`
         });
       }
 
