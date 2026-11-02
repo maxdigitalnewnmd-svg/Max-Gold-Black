@@ -483,6 +483,18 @@ func max_drag_cerrar_venta(mineral_key: String, ticket_franklin: String, callbac
 		callback.call(res)
 	)
 
+## Max Drag notifica encriptadamente al CEO Render la falta de liquidez en un mineral.
+## Render verifica y aprueba la inyección a la Bóveda del Gestor SIN disminuir el campo 'Recargar'.
+func max_drag_notificar_falta_fondos(mineral_key: String, monto_requerido: int, callback: Callable) -> void:
+	var payload = {
+		"action": "MAX_DRAG_NOTIFICAR_FALTA_FONDOS",
+		"uid": current_user_uid,
+		"mineral": mineral_key,
+		"monto_requerido": monto_requerido
+	}
+	print("[MaxDrag] Notificando encriptadamente al CEO Render falta de liquidez en %s ($%d)..." % [mineral_key, monto_requerido])
+	post_encrypted_gateway(payload, callback)
+
 # ----------------- MINERÍA OFFLINE Y FRANKLIN GENERAL (VENTA MASIVA) -----------------
 ## Consulta a Render el cálculo de minerales extraídos mientras el jugador estuvo ausente
 ## Utiliza el reloj oficial del servidor Render (independiente de la hora del cliente)

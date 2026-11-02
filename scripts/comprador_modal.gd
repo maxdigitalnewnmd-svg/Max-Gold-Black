@@ -286,7 +286,10 @@ func _on_max_drag_cierre_recibido(res: Dictionary) -> void:
 		var monto_ganado = int(res.get("monto_pagado", current_price))
 		fase_actual = FaseModal.MAX_DRAG_APROBADO
 		lbl_stamp.visible = true
-		lbl_stamp.text = "✔ VISTO BUENO: MAX DRAG (OPERACIÓN ATÓMICA)"
+		if res.get("recarga_soberana_aplicada", false):
+			lbl_stamp.text = "✔ VISTO BUENO: MAX DRAG & CEO RENDER (RECARGA SOBERANA)"
+		else:
+			lbl_stamp.text = "✔ VISTO BUENO: MAX DRAG (OPERACIÓN ATÓMICA)"
 		lbl_stamp.add_theme_color_override("font_color", Color(0.2, 0.95, 0.45, 1))
 
 		if is_instance_valid(max_drag_anim):
@@ -302,7 +305,7 @@ func _on_max_drag_cierre_recibido(res: Dictionary) -> void:
 		lbl_stamp.visible = true
 		lbl_stamp.text = "✖ RECHAZADO: SEGURIDAD FINANCIERA"
 		lbl_stamp.add_theme_color_override("font_color", Color(0.95, 0.3, 0.3, 1))
-		target_dialogue_text = res.get("error", "Max Drag: La operación no pudo ser autorizada.")
+		target_dialogue_text = res.get("error", "Max Drag: Fondos insuficientes. Se notificó al CEO Render. Tus recursos están 100% seguros y no fueron descontados.")
 		btn_vender.disabled = false
 		btn_vender.text = "✖ Entendido"
 

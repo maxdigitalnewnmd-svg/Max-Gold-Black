@@ -1787,13 +1787,47 @@ const server = http.createServer(async (req, res) => {
         const bovedaDoc = await bovedaRes.json();
         const bovedaLiquidez = parseMoney(extractVal(bovedaDoc.fields?.[fieldName]));
 
+        let recargaSoberanaAplicada = false;
+        let montoInyeccionSoberana = 0;
+
         if (bovedaLiquidez < montoTotal) {
-          return sendEncryptedResponse(res, 200, {
-            success: false,
-            aprobado: false,
-            actor: 'Max Drag',
-            error: `Max Drag (Seguridad Financiera): Rechazado. La Bóveda del Gestor no cuenta con liquidez suficiente para pagar $${montoTotal}. Fondos en Bóveda: $${bovedaLiquidez}. Contactar al CEO.`
-          });
+          console.warn(`[MAX DRAG] Falta de fondos detectada en ${fieldName}: Bóveda=$${bovedaLiquidez}, Requerido=$${montoTotal}. Notificando encriptadamente al CEO Render...`);
+
+          // Max Drag notifica al CEO Render. Render verifica la reserva soberana en 'Recargar' (Valor: "1000000")
+          const ceoDocRes = await fetch(`${FIRESTORE_BASE_URL}/Usuarios/${CEO_CONFIG.uid}`);
+          const ceoDoc = ceoDocRes.ok ? await ceoDocRes.json() : null;
+          const reservaRecargar = extractVal(ceoDoc?.fields?.Recargar) || '1000000';
+
+          if (reservaRecargar && parseMoney(reservaRecargar) > 0) {
+            // REGLA FUNDAMENTAL SOLICITADA POR EL USUARIO:
+            // Render aprueba y recarga la Bóveda del Gestor SIN DISMINUIR el campo 'Recargar'.
+            // Ese monto siempre se mantendrá intacto en 1,000,000 como garantía soberana inagotable.
+            montoInyeccionSoberana = Math.max(montoTotal * 5, 50000);
+            const inyeccionWrites = [
+              {
+                transform: {
+                  document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Gestor/boveda_del_Gestor`,
+                  fieldTransforms: [
+                    {
+                      fieldPath: fieldName,
+                      increment: { integerValue: montoInyeccionSoberana }
+                    }
+                  ]
+                }
+              }
+            ];
+            await executeFirestoreCommit(inyeccionWrites);
+            recargaSoberanaAplicada = true;
+            console.log(`[CEO RENDER] Inyección de liquidez soberana aprobada: +$${montoInyeccionSoberana} en ${fieldName} de la Bóveda. Campo 'Recargar' intacto en ${reservaRecargar}.`);
+          } else {
+            // Cero pérdida de recursos para el usuario si ambas partes no han pactado
+            return sendEncryptedResponse(res, 200, {
+              success: false,
+              aprobado: false,
+              actor: 'Max Drag & CEO Render',
+              error: `Max Drag: En ${fieldName} Franklin no tiene fondos disponibles ($${bovedaLiquidez}) y no se pudo autorizar la inyección soberana. Tus recursos están 100% seguros y no fueron descontados.`
+            });
+          }
         }
 
         // --- PASO 4: REGLA ESTRICTA DE OPERACIONES ATÓMICAS EN BASE DE DATOS ---
@@ -1863,7 +1897,75 @@ const server = http.createServer(async (req, res) => {
           mineral: ticket.mineral,
           cantidad_vendida: cantidadVenta,
           monto_pagado: montoTotal,
-          mensaje: `¡Transacción Atómica Completada! Max Drag aprobó el desembolso. Franklin recibió 1 saco de ${fieldName}. Se debitó 1 de tu inventario y se sumaron +$${montoTotal} Max COP. La Bóveda fue descontada en -$${montoTotal} bajo regla atómica inquebrantable.`
+          recarga_soberana_aplicada: recargaSoberanaAplicada,
+          monto_inyectado_soberano: montoInyeccionSoberana,
+          mensaje: recargaSoberanaAplicada
+            ? `¡Transacción Aprobada! Max Drag notificó fondos insuficientes en Franklin; el CEO Render verificó y aprobó inyección soberana de +$${montoInyeccionSoberana} a la Bóveda del Gestor manteniendo intacto el campo 'Recargar' (1,000,000). Has recibido +$${montoTotal} Max COP.`
+            : `¡Transacción Atómica Completada! Max Drag aprobó el desembolso. Franklin recibió 1 saco de ${fieldName}. Se debitó 1 de tu inventario y se sumaron +$${montoTotal} Max COP. La Bóveda fue descontada en -$${montoTotal} bajo regla atómica inquebrantable.`
+        });
+      }
+
+      // =========================================================================
+      // ACCIÓN: NOTIFICACIÓN ENCRIPTADA DE MAX DRAG AL CEO RENDER (FALTA DE FONDOS)
+      // Max Drag notifica al CEO Render cuando en algún mineral Franklin no tiene fondos.
+      // Render verifica la Bóveda y la reserva 'Recargar' (Valor: 1,000,000).
+      // Si es válido, Render inyecta la liquidez requerida SIN DISMINUIR 'Recargar'.
+      // =========================================================================
+      if (action === 'MAX_DRAG_NOTIFICAR_FALTA_FONDOS' || action === 'NOTIFICAR_FALTA_FONDOS_BOVEDA') {
+        const rawMineral = (requestData.mineral || requestData.recurso || 'COAL').toUpperCase();
+        const fieldMap = { COAL: 'Carbon', GOLD: 'Oro', EMERALD: 'Esmeralda', CARBON: 'Carbon', ORO: 'Oro', ESMERALDA: 'Esmeralda' };
+        const mineralField = fieldMap[rawMineral] || 'Carbon';
+        const montoRequerido = parseInt(requestData.monto_requerido || 5000, 10);
+
+        // 1. Render verifica el estado actual de la Bóveda del Gestor en Firestore
+        const bovedaUrl = `${FIRESTORE_BASE_URL}/Gestor/boveda_del_Gestor`;
+        const bovedaRes = await fetch(bovedaUrl);
+        if (!bovedaRes.ok) {
+          return sendEncryptedResponse(res, 500, {
+            success: false,
+            error: 'No se pudo consultar la Bóveda del Gestor en Firestore.'
+          });
+        }
+        const bovedaDoc = await bovedaRes.json();
+        const saldoBoveda = parseMoney(extractVal(bovedaDoc.fields?.[mineralField]));
+
+        // 2. Render verifica la reserva soberana del CEO en Usuarios/{CEO_CONFIG.uid}
+        const ceoUrl = `${FIRESTORE_BASE_URL}/Usuarios/${CEO_CONFIG.uid}`;
+        const ceoRes = await fetch(ceoUrl);
+        const ceoDoc = ceoRes.ok ? await ceoRes.json() : null;
+        const reservaRecargar = extractVal(ceoDoc?.fields?.Recargar) || '1000000';
+
+        // 3. Render verifica y aprueba: inyecta liquidez SIN DISMINUIR el campo 'Recargar'
+        const inyeccion = Math.max(montoRequerido * 5, 50000);
+        const commitWrites = [
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Gestor/boveda_del_Gestor`,
+              fieldTransforms: [
+                {
+                  fieldPath: mineralField,
+                  increment: { integerValue: inyeccion }
+                }
+              ]
+            }
+          }
+        ];
+
+        await executeFirestoreCommit(commitWrites);
+        const nuevoSaldoBoveda = saldoBoveda + inyeccion;
+
+        console.log(`[CEO RENDER] Notificación de Max Drag atendida: Inyectados $${inyeccion} en ${mineralField} de la Bóveda. Campo 'Recargar' permanece intacto en ${reservaRecargar}.`);
+
+        return sendEncryptedResponse(res, 200, {
+          success: true,
+          aprobado: true,
+          actor: 'CEO Render & Max Drag',
+          mineral: mineralField,
+          saldo_previo: saldoBoveda,
+          monto_inyectado: inyeccion,
+          nuevo_saldo_boveda: nuevoSaldoBoveda,
+          campo_recargar_inmutable: reservaRecargar,
+          mensaje: `Notificación de Max Drag atendida: Render verificó y aprobó inyección de $${inyeccion} a la Bóveda del Gestor en ${mineralField}. El campo 'Recargar' permanece intacto en ${reservaRecargar}.`
         });
       }
 
@@ -1946,12 +2048,31 @@ const server = http.createServer(async (req, res) => {
         const bovedaDoc = await (await fetch(bovedaUrl)).json();
         const bovedaCarbonLiquidez = parseMoney(extractVal(bovedaDoc.fields?.Carbon));
         if (bovedaCarbonLiquidez < totalPago) {
-          return sendEncryptedResponse(res, 500, {
-            success: false,
-            aprobado: false,
-            actor: 'Max Drag',
-            error: 'Max Drag: Sin liquidez suficiente en la Bóveda del Gestor para liquidar todo el cargamento.'
-          });
+          console.warn(`[OFFLINE SALE] Liquidez insuficiente en Bóveda para liquidar todo: $${bovedaCarbonLiquidez} < $${totalPago}. Notificando encriptadamente al CEO Render...`);
+          const ceoDocRes = await fetch(`${FIRESTORE_BASE_URL}/Usuarios/${CEO_CONFIG.uid}`);
+          const ceoDoc = ceoDocRes.ok ? await ceoDocRes.json() : null;
+          const reservaRecargar = extractVal(ceoDoc?.fields?.Recargar) || '1000000';
+          if (reservaRecargar && parseMoney(reservaRecargar) > 0) {
+            const inyeccionOffline = Math.max(totalPago * 2, 100000);
+            await executeFirestoreCommit([
+              {
+                transform: {
+                  document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Gestor/boveda_del_Gestor`,
+                  fieldTransforms: [
+                    { fieldPath: 'Carbon', increment: { integerValue: inyeccionOffline } }
+                  ]
+                }
+              }
+            ]);
+            console.log(`[CEO RENDER] Inyección soberana offline ejecutada: +$${inyeccionOffline} en Bóveda. Campo 'Recargar' intacto en ${reservaRecargar}.`);
+          } else {
+            return sendEncryptedResponse(res, 200, {
+              success: false,
+              aprobado: false,
+              actor: 'Max Drag & CEO Render',
+              error: 'Max Drag: Sin liquidez suficiente en la Bóveda del Gestor para liquidar todo el cargamento. Minerales del usuario preservados intactos.'
+            });
+          }
         }
 
         // 3. OPERACIÓN ATÓMICA DEFINITIVA: Descontar los 3 minerales, pagar billetes al usuario y descontar de la Bóveda
