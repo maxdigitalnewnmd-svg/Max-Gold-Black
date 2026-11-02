@@ -324,8 +324,30 @@ func consultar_usuario_en_vivo() -> void:
 			user_profile_updated.emit(user_profile)
 	)
 
+## Verifica si el usuario ha adquirido una camioneta específica en el Taller
+func is_truck_acquired(tier: int) -> bool:
+	var field_code = str(user_profile.get("camion_tier_" + str(tier) + "_codigo", ""))
+	if not field_code.is_empty():
+		return true
+	if user_profile.has("camiones_adquiridos"):
+		var ca = user_profile["camiones_adquiridos"]
+		if ca is Dictionary and (ca.has(tier) or ca.has(str(tier))):
+			return true
+	return false
+
 ## Obtiene el código encriptado individual de seguridad del camión según su Tier
 func get_truck_security_code(tier: int) -> String:
+	# 1. Si el usuario ya adquirió la camioneta en Firestore, usar su código oficial con fecha de compra
+	var field_code = str(user_profile.get("camion_tier_" + str(tier) + "_codigo", ""))
+	if not field_code.is_empty():
+		return field_code
+	if user_profile.has("camiones_adquiridos"):
+		var ca = user_profile["camiones_adquiridos"]
+		if ca is Dictionary:
+			var t_obj = ca.get(tier, ca.get(str(tier), {}))
+			if t_obj is Dictionary and t_obj.has("codigo") and not str(t_obj["codigo"]).is_empty():
+				return str(t_obj["codigo"])
+
 	if truck_security_codes.has(tier) and not str(truck_security_codes[tier]).is_empty():
 		return str(truck_security_codes[tier])
 	if truck_security_codes.has(str(tier)) and not str(truck_security_codes[str(tier)]).is_empty():
@@ -339,6 +361,37 @@ func get_truck_security_code(tier: int) -> String:
 	var code = "MGB-TRK-T" + str(tier) + "-" + full_hex.substr(0, 16)
 	truck_security_codes[tier] = code
 	return code
+
+## Compra una camioneta en el Taller mediante transacción atómica encriptada con Render
+func comprar_camioneta(tier: int, callback: Callable) -> void:
+	var payload = {
+		"action": "COMPRAR_CAMIONETA",
+		"uid": current_user_uid,
+		"tier": tier
+	}
+	print("[FirebaseManager] Solicitando compra encriptada de Camioneta T%d a Render..." % tier)
+	post_encrypted_gateway(payload, func(res: Dictionary):
+		if res.get("success", false) and res.get("aprobado", false):
+			var code = res.get("codigo_camion", "")
+			var titulo = res.get("titulo", "")
+			user_profile["camion_tier_" + str(tier) + "_codigo"] = code
+			user_profile["camion_tier_" + str(tier) + "_titulo"] = titulo
+			if res.has("nuevo_saldo_billetes"):
+				user_profile["billete"] = res["nuevo_saldo_billetes"]
+				GestorJuego.cash = int(res["nuevo_saldo_billetes"])
+			truck_security_codes[tier] = code
+			if not user_profile.has("camiones_adquiridos"):
+				user_profile["camiones_adquiridos"] = {}
+			user_profile["camiones_adquiridos"][tier] = {
+				"tier": tier,
+				"titulo": titulo,
+				"codigo": code,
+				"fecha": res.get("fecha_compra", "")
+			}
+			user_profile_updated.emit(user_profile)
+			taller_updated.emit(taller_data)
+		callback.call(res)
+	)
 
 ## Obtiene el código encriptado individual de seguridad del terreno del usuario
 func get_land_security_code() -> String:

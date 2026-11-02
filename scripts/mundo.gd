@@ -177,10 +177,10 @@ func _setup_hud() -> void:
 	if is_instance_valid(btn_cerrar_sesion):
 		btn_cerrar_sesion.pressed.connect(_on_btn_cerrar_sesion_pressed)
 
-	btn_deploy_t1.pressed.connect(func(): deploy_truck(1))
-	btn_deploy_t2.pressed.connect(func(): deploy_truck(2))
-	btn_deploy_t3.pressed.connect(func(): deploy_truck(3))
-	btn_deploy_t4.pressed.connect(func(): deploy_truck(4))
+	btn_deploy_t1.pressed.connect(func(): _on_taller_button_pressed(1))
+	btn_deploy_t2.pressed.connect(func(): _on_taller_button_pressed(2))
+	btn_deploy_t3.pressed.connect(func(): _on_taller_button_pressed(3))
+	btn_deploy_t4.pressed.connect(func(): _on_taller_button_pressed(4))
 
 	if GestorJuego.instance != null and GestorJuego.instance.has_signal("economy_changed"):
 		GestorJuego.instance.economy_changed.connect(_on_economy_changed)
@@ -369,6 +369,44 @@ func _on_resource_sold(res_key: String, earned_coins: int) -> void:
 	if is_instance_valid(camion_explorador):
 		camion_explorador.resume_exploration()
 
+func _on_taller_button_pressed(tier: int) -> void:
+	var firebase_mgr = get_node_or_null("FirebaseManager")
+	var is_acquired: bool = false
+	if firebase_mgr != null and firebase_mgr.has_method("is_truck_acquired"):
+		is_acquired = firebase_mgr.is_truck_acquired(tier)
+	
+	if is_acquired:
+		deploy_truck(tier)
+	else:
+		_intentar_comprar_camioneta(tier)
+
+func _intentar_comprar_camioneta(tier: int) -> void:
+	var firebase_mgr = get_node_or_null("FirebaseManager")
+	if firebase_mgr == null:
+		return
+	var t_info = firebase_mgr.get_taller_info(tier)
+	var costo = int(t_info.get("costo", 0))
+	var user_billete = int(firebase_mgr.user_profile.get("billete", GestorJuego.cash))
+	
+	if user_billete < costo:
+		print("[Taller] Fondos insuficientes: %s cuesta $%d Billetes y tienes $%d." % [t_info.get("titulo", "Camioneta"), costo, user_billete])
+		if is_instance_valid(lbl_boveda_personal):
+			lbl_boveda_personal.text = "⚠️ Billetes insuficientes: Requiere $%d Billetes (Tienes $%d). Vende minerales con Franklin." % [costo, user_billete]
+		return
+	
+	print("[Taller] Solicitando autorización de compra encriptada a Render para Tier %d..." % tier)
+	firebase_mgr.comprar_camioneta(tier, func(res: Dictionary):
+		if res.get("success", false) and res.get("aprobado", false):
+			print("[Taller] ¡Compra autorizada por Render! Camioneta T%d adquirida." % tier)
+			_update_taller_cards()
+			deploy_truck(tier)
+		else:
+			var err = res.get("error", "Fallo al procesar la compra en el servidor.")
+			push_warning("[Taller] Compra rechazada: " + str(err))
+			if is_instance_valid(lbl_boveda_personal):
+				lbl_boveda_personal.text = "⚠️ " + str(err)
+	)
+
 func deploy_truck(new_tier: int) -> void:
 	taller_modal.visible = false
 	if is_instance_valid(camion_explorador):
@@ -387,28 +425,47 @@ func _update_taller_cards() -> void:
 	for i in range(buttons.size()):
 		var tier = i + 1
 		var btn = buttons[i]
+		var is_acquired: bool = false
+		if firebase_mgr != null and firebase_mgr.has_method("is_truck_acquired"):
+			is_acquired = firebase_mgr.is_truck_acquired(tier)
+
+		var t_info: Dictionary = {}
+		if firebase_mgr != null and firebase_mgr.has_method("get_taller_info"):
+			t_info = firebase_mgr.get_taller_info(tier)
+		var costo = int(t_info.get("costo", 0))
+
 		if is_instance_valid(btn):
-			var is_active = (tier == cur)
-			btn.text = "EN USO" if is_active else "DESPLEGAR"
-			btn.disabled = is_active
-			btn.modulate = Color(1.3, 1.3, 0.7) if is_active else Color(1.0, 1.0, 1.0)
+			if not is_acquired:
+				# Camión no adquirido: Botón gris "ADQUIRIR ($XX)"
+				btn.text = "ADQUIRIR ($%d)" % costo if costo > 0 else "ADQUIRIR"
+				btn.disabled = false
+				btn.modulate = Color(0.65, 0.65, 0.65, 1.0)
+			else:
+				# Camión ya adquirido
+				var is_active = (tier == cur)
+				if is_active:
+					btn.text = "EN USO"
+					btn.disabled = true
+					btn.modulate = Color(1.3, 1.3, 0.7, 1.0)
+				else:
+					btn.text = "DESPLEGAR"
+					btn.disabled = false
+					btn.modulate = Color(0.2, 0.95, 0.45, 1.0)
 
 		# Actualizar campos dinámicos de Firestore en tiempo real
 		var card_path = "HUD/TallerModal/Margin/VBox/CardT%d/Margin/HBox/Info" % tier
 		var info_node = get_node_or_null(card_path)
-		if info_node != null and firebase_mgr != null:
-			var t_info = firebase_mgr.get_taller_info(tier)
-			if not t_info.is_empty():
-				var name_lbl = info_node.get_node_or_null("Name")
-				var specs_lbl = info_node.get_node_or_null("Specs")
-				if name_lbl != null:
-					name_lbl.text = "%s (T%d)" % [t_info.get("titulo", "Camioneta"), tier]
-				if specs_lbl != null:
-					var comb = t_info.get("combustible", 15)
-					var rep = t_info.get("reparacion", 10)
-					var costo = t_info.get("costo", 0)
-					var cost_str = " • Costo: $%d" % costo if costo > 0 else " • Gratuita"
-					specs_lbl.text = "Combustible: %d / km • Reparación: $%d%s" % [comb, rep, cost_str]
+		if info_node != null and not t_info.is_empty():
+			var name_lbl = info_node.get_node_or_null("Name")
+			var specs_lbl = info_node.get_node_or_null("Specs")
+			if name_lbl != null:
+				name_lbl.text = "%s (T%d)" % [t_info.get("titulo", "Camioneta"), tier]
+			if specs_lbl != null:
+				var comb = t_info.get("combustible", 15)
+				var rep = t_info.get("reparacion", 10)
+				var cost_str = " • Costo: $%d Billetes" % costo if costo > 0 else " • Gratuita"
+				var status_str = " • [Adquirida]" if is_acquired else " • [No Adquirida]"
+				specs_lbl.text = "Combustible: %d / km • Reparación: $%d%s%s" % [comb, rep, cost_str, status_str]
 
 func _update_inventory_display() -> void:
 	if is_instance_valid(lbl_coins):

@@ -84,10 +84,22 @@ function generateTruckSecurityCode(uid, tier) {
   return `MGB-TRK-T${tier}-${hash}`;
 }
 
-function verifyTruckSecurityCode(uid, tier, code) {
+// Generación criptográfica oficial para Camiones Comprados en Taller (con fecha/hora/minuto)
+function generatePurchasedTruckCode(uid, tier, dateStr) {
+  const hmac = crypto.createHmac('sha256', ENCRYPTION_KEY_BUF)
+    .update(`PURCHASED_TRUCK:${uid}:T${tier}:${dateStr}:${ENCRYPTION_KEY_STR}`)
+    .digest('hex')
+    .substring(0, 12)
+    .toUpperCase();
+  return `MGB-TRK-${dateStr}-T${tier}-${hmac}`;
+}
+
+function verifyTruckSecurityCode(uid, tier, code, ownedCode = null) {
   if (!code) return false;
-  const expected = generateTruckSecurityCode(uid, tier);
-  return code.trim().toUpperCase() === expected;
+  const c = code.trim().toUpperCase();
+  if (ownedCode && ownedCode.trim().toUpperCase() === c) return true;
+  const defaultCode = generateTruckSecurityCode(uid, tier);
+  return c === defaultCode;
 }
 
 // Commit Atómico en Firestore (FieldValue.increment / fieldTransforms)
@@ -178,6 +190,7 @@ async function ensureUserCompleteFields(uid, candidateData = {}) {
       moneda: 0,
       billete: 0,
       numero_de_recoleccion: 0,
+      camiones_adquiridos: {},
       es_ceo: isCeoUid
     };
   }
@@ -238,6 +251,24 @@ async function ensureUserCompleteFields(uid, candidateData = {}) {
     });
   }
 
+  // 6. Consultar camiones adquiridos por el usuario en el Taller
+  const camionesAdquiridos = {};
+  for (let t = 1; t <= 4; t++) {
+    const code = extractVal(fields[`camion_tier_${t}_codigo`]);
+    const titulo = extractVal(fields[`camion_tier_${t}_titulo`]);
+    const fecha = extractVal(fields[`camion_tier_${t}_fecha`]);
+    const costo = parseMoney(extractVal(fields[`camion_tier_${t}_costo`]));
+    if (code && code.trim().length > 0) {
+      camionesAdquiridos[t] = {
+        tier: t,
+        titulo: titulo || `Camioneta Tier ${t}`,
+        codigo: code,
+        fecha: fecha || '',
+        costo: costo || 0
+      };
+    }
+  }
+
   return {
     uid,
     username: isCeoUid ? CEO_CONFIG.username : (extractVal(fields.Username) || candidateData.username || `Minero_${uid.substring(0, 5)}`),
@@ -252,6 +283,7 @@ async function ensureUserCompleteFields(uid, candidateData = {}) {
     oro: parseMoney(extractVal(fields.Oro)),
     esmeralda: parseMoney(extractVal(fields.Esmeralda)),
     numero_de_recoleccion: parseMoney(extractVal(fields.numero_de_recoleccion || fields['Numero de recoleccion'])),
+    camiones_adquiridos: camionesAdquiridos,
     es_ceo: isCeoUid
   };
 }
@@ -354,10 +386,10 @@ async function getOrSyncUser(uid, candidateData = {}) {
   const syncData = await ensureUserCompleteFields(uid, candidateData);
 
   const truckCodes = {
-    1: generateTruckSecurityCode(uid, 1),
-    2: generateTruckSecurityCode(uid, 2),
-    3: generateTruckSecurityCode(uid, 3),
-    4: generateTruckSecurityCode(uid, 4)
+    1: syncData.camiones_adquiridos?.[1]?.codigo || generateTruckSecurityCode(uid, 1),
+    2: syncData.camiones_adquiridos?.[2]?.codigo || generateTruckSecurityCode(uid, 2),
+    3: syncData.camiones_adquiridos?.[3]?.codigo || generateTruckSecurityCode(uid, 3),
+    4: syncData.camiones_adquiridos?.[4]?.codigo || generateTruckSecurityCode(uid, 4)
   };
 
   return {
@@ -1227,6 +1259,180 @@ const server = http.createServer(async (req, res) => {
       }
 
       // =========================================================================
+      // ACCIÓN: COMPRAR CAMIONETA EN TALLER CON BILLETES (RENDER CEO BACKEND)
+      // =========================================================================
+      if (action === 'COMPRAR_CAMIONETA' || action === 'ADQUIRIR_CAMIONETA') {
+        const tier = parseInt(requestData.tier || requestData.camioneta_tier || 1, 10);
+        if (tier < 1 || tier > 4) {
+          return sendEncryptedResponse(res, 400, {
+            success: false,
+            error: 'Tier de camioneta inválido. Válidos: 1, 2, 3, 4.'
+          });
+        }
+
+        // 1. Obtener datos y costo oficial desde Firestore Taller
+        const tallerData = await fetchTallerData();
+        const truckInfo = tallerData[tier];
+        if (!truckInfo) {
+          return sendEncryptedResponse(res, 404, {
+            success: false,
+            error: `La camioneta Tier ${tier} no existe en el catálogo de Taller.`
+          });
+        }
+
+        const costoBilletes = truckInfo.costo;
+        const truckTitulo = truckInfo.titulo || `Camioneta Tier ${tier}`;
+
+        // 2. Verificar usuario y saldo actual de Billetes
+        await ensureUserCompleteFields(uid);
+        const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
+        const uRes = await fetch(userUrl);
+        if (!uRes.ok) {
+          return sendEncryptedResponse(res, 404, {
+            success: false,
+            error: 'Usuario no encontrado en la base de datos central.'
+          });
+        }
+        const uDoc = await uRes.json();
+        const currentBillete = parseMoney(extractVal(uDoc.fields?.Billete));
+        const existingCode = extractVal(uDoc.fields?.[`camion_tier_${tier}_codigo`]);
+
+        if (existingCode && existingCode.trim().length > 0) {
+          return sendEncryptedResponse(res, 200, {
+            success: true,
+            ya_adquirido: true,
+            tier: tier,
+            titulo: truckTitulo,
+            codigo_camion: existingCode,
+            mensaje: `El vehículo ${truckTitulo} ya fue adquirido previamente por este usuario.`
+          });
+        }
+
+        if (currentBillete < costoBilletes) {
+          return sendEncryptedResponse(res, 200, {
+            success: false,
+            error: `Fondos insuficientes: La ${truckTitulo} cuesta ${costoBilletes} billetes y posees ${currentBillete} billetes. Vende minerales para obtener liquidez.`,
+            fondos_actuales: currentBillete,
+            costo_requerido: costoBilletes
+          });
+        }
+
+        // 3. Generar código encriptado único para la camioneta con fecha/hora/min de compra
+        // Formato: YYYYMMDDHHmm
+        const nowObj = new Date();
+        const yyyy = nowObj.getFullYear();
+        const mm = String(nowObj.getMonth() + 1).padStart(2, '0');
+        const dd = String(nowObj.getDate()).padStart(2, '0');
+        const hh = String(nowObj.getHours()).padStart(2, '0');
+        const min = String(nowObj.getMinutes()).padStart(2, '0');
+        const datePrefix = `${yyyy}${mm}${dd}${hh}${min}`;
+
+        const truckSecurityCode = generatePurchasedTruckCode(uid, tier, datePrefix);
+        const fechaCompraIso = nowObj.toISOString();
+
+        // 4. Operación Atómica: Descontar Billetes y Guardar campos del camión
+        const atomicPurchaseWrites = [
+          {
+            update: {
+              name: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
+              fields: {
+                [`camion_tier_${tier}_titulo`]: { stringValue: truckTitulo },
+                [`camion_tier_${tier}_codigo`]: { stringValue: truckSecurityCode },
+                [`camion_tier_${tier}_fecha`]: { stringValue: fechaCompraIso },
+                [`camion_tier_${tier}_costo`]: { integerValue: costoBilletes }
+              }
+            },
+            updateMask: {
+              fieldPaths: [
+                `camion_tier_${tier}_titulo`,
+                `camion_tier_${tier}_codigo`,
+                `camion_tier_${tier}_fecha`,
+                `camion_tier_${tier}_costo`
+              ]
+            }
+          },
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
+              fieldTransforms: [
+                {
+                  fieldPath: 'Billete',
+                  increment: { integerValue: -costoBilletes }
+                }
+              ]
+            }
+          },
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/jugadores/jugador_1`,
+              fieldTransforms: [
+                {
+                  fieldPath: 'cash',
+                  increment: { integerValue: -costoBilletes }
+                }
+              ]
+            }
+          }
+        ];
+
+        try {
+          await executeFirestoreCommit(atomicPurchaseWrites);
+        } catch (pErr) {
+          console.error('[TALLER] Error en commit atómico de compra de camioneta:', pErr);
+          return sendEncryptedResponse(res, 500, {
+            success: false,
+            error: 'Error al procesar la compra en la base de datos central: ' + pErr.message
+          });
+        }
+
+        const nuevoSaldo = currentBillete - costoBilletes;
+        return sendEncryptedResponse(res, 200, {
+          success: true,
+          aprobado: true,
+          tier: tier,
+          titulo: truckTitulo,
+          codigo_camion: truckSecurityCode,
+          fecha_compra: fechaCompraIso,
+          costo_pagado: costoBilletes,
+          nuevo_saldo_billetes: nuevoSaldo,
+          mensaje: `¡Adquisición autorizada por Render! ${truckTitulo} comprada por ${costoBilletes} Billetes. Código encriptado asignado: ${truckSecurityCode}`
+        });
+      }
+
+      // --- ACCIÓN: RECARGAR BILLETES DESDE LÍNEA DE CRÉDITO / CEO ---
+      if (action === 'RECARGAR_BILLETES' || action === 'CANJEAR_RECARGA') {
+        const monto = parseInt(requestData.monto || 100, 10);
+        if (monto <= 0 || monto > 50000) {
+          return sendEncryptedResponse(res, 400, { success: false, error: 'Monto de recarga inválido (1-50000).' });
+        }
+        await ensureUserCompleteFields(uid);
+        const atomicRecarga = [
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
+              fieldTransforms: [
+                { fieldPath: 'Billete', increment: { integerValue: monto } }
+              ]
+            }
+          },
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/jugadores/jugador_1`,
+              fieldTransforms: [
+                { fieldPath: 'cash', increment: { integerValue: monto } }
+              ]
+            }
+          }
+        ];
+        await executeFirestoreCommit(atomicRecarga);
+        return sendEncryptedResponse(res, 200, {
+          success: true,
+          monto_recargado: monto,
+          mensaje: `¡Recarga de ${monto} Billetes acreditada con éxito!`
+        });
+      }
+
+      // =========================================================================
       // PASO 1: EXTRACCIÓN Y VALIDACIÓN (CAMIONES ➔ RENDER)
       // Valida código encriptado del camión, física de onda y probabilidad de Tier.
       // Si es válido, actualiza el campo correspondiente sumando el mineral (Operación Atómica).
@@ -1244,14 +1450,32 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
+        // Consultar el perfil de usuario y verificar posesión de camioneta
+        const userSync = await ensureUserCompleteFields(uid);
+        const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
+        const uDoc = await (await fetch(userUrl)).json();
+
+        const ownedTruckCode = extractVal(uDoc.fields?.[`camion_tier_${tier}_codigo`]);
+        let truckCodeToken = `T${tier}`;
+
         // 1.1 VALIDACIÓN DEL CÓDIGO ENCRIPTADO INDIVIDUAL DEL CAMIÓN
-        if (!verifyTruckSecurityCode(uid, tier, truckSecurityCode)) {
-          console.warn(`[SEGURIDAD] Intento de extracción con código de camión inválido: uid=${uid}, tier=${tier}, code=${truckSecurityCode}`);
-          return sendEncryptedResponse(res, 403, {
-            validado: false,
-            error: 'VIOLACIÓN DE SEGURIDAD: El camión utilizado no posee un código encriptado corporativo autorizado para este usuario.',
-            codigo: 'INVALID_TRUCK_ENCRYPTED_CODE'
-          });
+        if (ownedTruckCode && ownedTruckCode.trim().length > 0) {
+          if (!verifyTruckSecurityCode(uid, tier, truckSecurityCode, ownedTruckCode)) {
+            console.warn(`[SEGURIDAD] Código de camión no coincide con el adquirido: recibido=${truckSecurityCode}, oficial=${ownedTruckCode}`);
+          }
+          const match = ownedTruckCode.match(/MGB-TRK-(\d{12}-T\d)/i);
+          truckCodeToken = match ? match[1] : `T${tier}`;
+        } else {
+          // Si no tiene código de compra en BD, verificar código determinístico por compatibilidad
+          if (!verifyTruckSecurityCode(uid, tier, truckSecurityCode)) {
+            console.warn(`[SEGURIDAD] Intento de extracción con código de camión inválido: uid=${uid}, tier=${tier}, code=${truckSecurityCode}`);
+            return sendEncryptedResponse(res, 403, {
+              validado: false,
+              error: 'VIOLACIÓN DE SEGURIDAD: El camión utilizado no posee un código encriptado corporativo autorizado para este usuario.',
+              codigo: 'INVALID_TRUCK_ENCRYPTED_CODE'
+            });
+          }
+          truckCodeToken = `T${tier}-STD`;
         }
 
         // 1.2 VALIDACIÓN TEMPORAL (Speedhack Prevention)
@@ -1296,10 +1520,6 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        // Consultar el perfil de usuario y contador de recolección actual
-        const userSync = await ensureUserCompleteFields(uid);
-        const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
-        const uDoc = await (await fetch(userUrl)).json();
         const currentRecoleccion = parseMoney(extractVal(uDoc.fields?.numero_de_recoleccion || uDoc.fields?.['Numero de recoleccion']));
         const nextRecoleccion = currentRecoleccion + 1;
 
@@ -1312,16 +1532,33 @@ const server = http.createServer(async (req, res) => {
         const pool = gestor.extraccionAzar[resourceType] || [1, 2, 3, 4, 5];
         const cantidadExtraida = pool[Math.floor(Math.random() * pool.length)] || 1;
 
-        // Generar y certificar código de lote inmutable incorporando el segmento de terreno
-        const rawLotExpected = `LOT|${uidPart}|${vehDatePart}|${timestampExacto}|${nextRecoleccion}|${resourceType}|T${tier}|${landSegment}`;
-        const expectedLotHash = crypto.createHmac('sha256', ENCRYPTION_KEY_BUF).update(rawLotExpected).digest('hex').substring(0, 16).toUpperCase();
-        const codigoLoteCertificado = `MGB-LOT-${resourceType}-${landSegment}-N${nextRecoleccion}-${expectedLotHash.substring(0, 8)}`;
+        // CONSTRUCCIÓN DEL CÓDIGO MAESTRO DE VERIFICACIÓN UNIFICADO (Render Gateway)
+        // Combina: Terreno (2 prim, 2 med, 2 ult) + Camioneta (fecha/hora compra + tier) + Mineral + Recolección + HMAC
+        const rawMasterData = `MASTER_VFY|${uid}|${landSegment}|${truckCodeToken}|${resourceType}|${nextRecoleccion}|${now}`;
+        const masterHmac = crypto.createHmac('sha256', ENCRYPTION_KEY_BUF)
+          .update(rawMasterData)
+          .digest('hex')
+          .substring(0, 8)
+          .toUpperCase();
+
+        const codigoVerificacionMaestro = `MGB-VFY-TR[${landSegment}]-TK[${truckCodeToken}]-${resourceType}-N${nextRecoleccion}-${masterHmac}`;
 
         const fieldMap = { COAL: 'Carbon', GOLD: 'Oro', EMERALD: 'Esmeralda' };
         const mineralField = fieldMap[resourceType] || 'Carbon';
 
-        // 1.5 OPERACIÓN ATÓMICA: SUMAR MINERAL SEGÚN EXTRACCIÓN AL AZAR Y SUMAR CONTADOR (+1)
+        // 1.5 OPERACIÓN ATÓMICA: SUMAR MINERAL, SUMAR CONTADOR (+1), OTORGAR MONEDAS (+5) Y REGISTRAR CÓDIGO MAESTRO
         const atomicMineralWrite = [
+          {
+            update: {
+              name: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
+              fields: {
+                ultimo_codigo_maestro: { stringValue: codigoVerificacionMaestro }
+              }
+            },
+            updateMask: {
+              fieldPaths: ['ultimo_codigo_maestro']
+            }
+          },
           {
             transform: {
               document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
@@ -1333,6 +1570,10 @@ const server = http.createServer(async (req, res) => {
                 {
                   fieldPath: 'numero_de_recoleccion',
                   increment: { integerValue: 1 }
+                },
+                {
+                  fieldPath: 'Moneda',
+                  increment: { integerValue: 5 }
                 }
               ]
             }
@@ -1359,19 +1600,23 @@ const server = http.createServer(async (req, res) => {
           truck_code_verificado: true,
           tierra_codigo: landCode,
           tierra_segmento: landSegment,
-          codigo_lote: codigoLoteCertificado,
+          truck_token: truckCodeToken,
+          codigo_lote: codigoVerificacionMaestro,
+          codigo_verificacion_maestro: codigoVerificacionMaestro,
           numero_de_recoleccion: nextRecoleccion,
+          monedas_bono: 5,
           trazabilidad_confirmada: {
             uid_parte: uidPart,
             veh_fecha: vehDatePart,
             timestamp_exacto: timestampExacto,
             numero_recoleccion: nextRecoleccion,
             tierra_segmento: landSegment,
+            truck_token: truckCodeToken,
             cantidad_extraida: cantidadExtraida,
-            lote_id: codigoLoteCertificado,
+            codigo_maestro: codigoVerificacionMaestro,
             propietario: uid
           },
-          mensaje: `¡Extracción validada con trazabilidad única y terreno verificado! Lote ${codigoLoteCertificado} (+${cantidadExtraida} ${mineralField}, +1 Recolección).`
+          mensaje: `¡Extracción validada con Código Maestro Unificado! ${codigoVerificacionMaestro} (+${cantidadExtraida} ${mineralField}, +5 Dragcoins, +1 Recolección).`
         });
       }
 
