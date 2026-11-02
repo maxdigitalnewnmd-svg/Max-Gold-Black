@@ -212,6 +212,8 @@ func _setup_auth_flow() -> void:
 	var firebase_mgr = get_node_or_null("FirebaseManager")
 	if firebase_mgr != null and firebase_mgr.has_signal("session_state_changed"):
 		firebase_mgr.session_state_changed.connect(_on_session_state_changed)
+	if firebase_mgr != null and firebase_mgr.has_signal("offline_extraction_available"):
+		firebase_mgr.offline_extraction_available.connect(_on_offline_extraction_available)
 
 	var has_session: bool = false
 	if firebase_mgr != null and firebase_mgr.has_method("has_active_session"):
@@ -228,6 +230,8 @@ func _setup_auth_flow() -> void:
 			camion_explorador.visible = true
 			camion_explorador.resume_exploration()
 		_update_user_profile_card()
+		if firebase_mgr != null and firebase_mgr.has_method("sincronizar_extraccion_offline"):
+			firebase_mgr.sincronizar_extraccion_offline()
 
 func _on_session_state_changed(is_logged_in: bool) -> void:
 	if not is_logged_in:
@@ -259,6 +263,16 @@ func _on_auth_success(usuario: Dictionary) -> void:
 		camion_explorador.visible = true
 		camion_explorador.resume_exploration()
 	_update_user_profile_card()
+	var firebase_mgr = get_node_or_null("FirebaseManager")
+	if firebase_mgr != null and firebase_mgr.has_method("sincronizar_extraccion_offline"):
+		firebase_mgr.sincronizar_extraccion_offline()
+
+func _on_offline_extraction_available(offline_data: Dictionary) -> void:
+	print("[Mundo] Extracción offline detectada por Render. Mostrando Franklin General...")
+	if is_instance_valid(camion_explorador):
+		camion_explorador.pause_exploration()
+	if is_instance_valid(comprador_modal) and comprador_modal.has_method("open_for_offline_general"):
+		comprador_modal.open_for_offline_general(offline_data)
 
 func _set_modal_tab(tab_idx: int) -> void:
 	var is_taller = (tab_idx == 0)
@@ -303,10 +317,10 @@ func _update_user_profile_card() -> void:
 		lbl_boveda_personal.text = "🪙 Bóveda: %s Dragcoins • 💵 %s Max COP • ⛏️ Recolecciones: %s" % [_format_number(int(coins_cnt)), _format_number(int(cash_cnt)), str(rec_cnt)]
 
 func _on_btn_cerrar_sesion_pressed() -> void:
-	print("[Mundo] Salida voluntaria: Cerrando sesión del usuario.")
+	print("[Mundo] Salida voluntaria: Cerrando sesión del usuario y desactivando minería offline en Render.")
 	var firebase_mgr = get_node_or_null("FirebaseManager")
 	if firebase_mgr != null:
-		firebase_mgr.clear_session()
+		firebase_mgr.cerrar_sesion_render()
 	if is_instance_valid(taller_modal):
 		taller_modal.visible = false
 	if is_instance_valid(auth_modal):

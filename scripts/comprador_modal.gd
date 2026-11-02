@@ -54,6 +54,11 @@ var solicitud_actual: Dictionary = {}
 var dictamen_actual: Dictionary = {}
 var token_visto_bueno: String = ""
 
+# Minería Offline y Franklin General
+var is_offline_mode: bool = false
+var offline_ticket: String = ""
+var offline_total_pago: int = 0
+
 # Variables del Efecto Máquina de Escribir (Typewriter)
 var target_dialogue_text: String = ""
 var typewriter_chars: float = 0.0
@@ -190,7 +195,74 @@ func _process(delta: float) -> void:
 			if is_instance_valid(max_drag_anim):
 				max_drag_anim.set_speaking(false)
 
+## Modal Especial: Franklin General para liquidación masiva de minería offline
+func open_for_offline_general(offline_data: Dictionary) -> void:
+	is_offline_mode = true
+	offline_ticket = str(offline_data.get("ticket_franklin_general", ""))
+	offline_total_pago = int(offline_data.get("total_cotizado", 0))
+
+	var minerales = offline_data.get("minerales", {})
+	var c_qty = int(minerales.get("carbon", 0))
+	var o_qty = int(minerales.get("oro", 0))
+	var e_qty = int(minerales.get("esmeralda", 0))
+	var seg = str(offline_data.get("tierra_segmento", "TR0000"))
+
+	close_timer = 0.0
+	_mostrar_vista_franklin()
+
+	speaker_tag.text = "🏛️ Franklin General (Liquidador Total de Minería Offline)"
+	target_dialogue_text = "Franklin General: ¡Bienvenido de vuelta! Mientras estuviste offline tu flota continuó operando bajo supervisión de Render (Terreno: %s) y extrajo:\n• %d Carbón | • %d Oro | • %d Esmeraldas\n\nTotal oficial a liquidar por todo el cargamento: $%d Max COP.\n¿Deseas vender los 3 minerales juntos ahora?" % [seg, c_qty, o_qty, e_qty, offline_total_pago]
+
+	btn_vender.disabled = false
+	btn_vender.text = "💰 Vender Todo ($%d Max COP)" % offline_total_pago
+	if is_instance_valid(btn_cancelar):
+		btn_cancelar.text = "Guardar en Inventario"
+
+	fase_actual = FaseModal.FRANKLIN_COTIZACION
+	_iniciar_escritura_dialogo()
+	visible = true
+
+func _ejecutar_cierre_offline_max_drag() -> void:
+	_mostrar_vista_max_drag()
+	btn_vender.disabled = true
+	btn_vender.text = "Verificando con Render..."
+	target_dialogue_text = "Max Drag (CFO): Comprobando simultáneamente inventario total de los 3 minerales y liquidez en la Bóveda del Gestor..."
+	_iniciar_escritura_dialogo()
+
+	if FirebaseManager.instance != null:
+		FirebaseManager.instance.franklin_vender_todo_offline(offline_ticket, func(res: Dictionary):
+			if res.get("success", false) and res.get("aprobado", false):
+				fase_actual = FaseModal.MAX_DRAG_APROBADO
+				lbl_stamp.visible = true
+				lbl_stamp.text = "✔ VISTO BUENO: LIQUIDACIÓN TOTAL OFFLINE"
+				lbl_stamp.add_theme_color_override("font_color", Color(0.2, 0.95, 0.45, 1))
+				if is_instance_valid(max_drag_anim):
+					max_drag_anim.trigger_approval_nod()
+				var pagado = int(res.get("monto_pagado", offline_total_pago))
+				target_dialogue_text = "Max Drag (CFO): ¡Liquidación total aprobada bajo regla atómica! Se acreditaron $%d Max COP a tu saldo oficial." % pagado
+				GestorJuego.add_cash(pagado)
+				btn_vender.disabled = false
+				btn_vender.text = "✔ Finalizar y Continuar"
+			else:
+				fase_actual = FaseModal.MAX_DRAG_RECHAZADO
+				lbl_stamp.visible = true
+				lbl_stamp.text = "✖ RECHAZADO: SEGURIDAD FINANCIERA"
+				lbl_stamp.add_theme_color_override("font_color", Color(0.95, 0.3, 0.3, 1))
+				target_dialogue_text = res.get("error", "Max Drag: La liquidación masiva no pudo ser autorizada.")
+				btn_vender.disabled = false
+				btn_vender.text = "✖ Entendido"
+			_iniciar_escritura_dialogo()
+		)
+
 func _on_btn_principal_pressed() -> void:
+	if is_offline_mode:
+		if fase_actual == FaseModal.FRANKLIN_COTIZACION:
+			_ejecutar_cierre_offline_max_drag()
+		elif fase_actual == FaseModal.MAX_DRAG_APROBADO or fase_actual == FaseModal.MAX_DRAG_RECHAZADO:
+			is_offline_mode = false
+			_cerrar_definitivamente(offline_total_pago if fase_actual == FaseModal.MAX_DRAG_APROBADO else 0)
+		return
+
 	if fase_actual == FaseModal.FRANKLIN_COTIZACION:
 		_ejecutar_cierre_venta_max_drag()
 	elif fase_actual == FaseModal.MAX_DRAG_APROBADO or fase_actual == FaseModal.MAX_DRAG_RECHAZADO:
@@ -339,6 +411,14 @@ func _on_market_prices_updated_from_firebase(precios: Dictionary, _boveda: Dicti
 
 ## Si el usuario cancela o no hay acuerdo: "Disculpe, no podemos llegar a un acuerdo" y se cierra
 func _on_btn_cancelar_pressed() -> void:
+	if is_offline_mode:
+		is_offline_mode = false
+		target_dialogue_text = "Franklin General: De acuerdo. Los minerales extraídos han quedado registrados y guardados en tu inventario."
+		_iniciar_escritura_dialogo()
+		fase_actual = FaseModal.CERRANDO_SIN_ACUERDO
+		close_timer = 1.3
+		return
+
 	if fase_actual == FaseModal.CERRANDO_SIN_ACUERDO:
 		return
 

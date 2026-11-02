@@ -14,6 +14,7 @@ signal user_profile_updated(user_data: Dictionary)
 signal player_data_loaded(data: Dictionary)
 signal player_data_saved()
 signal session_state_changed(is_logged_in: bool)
+signal offline_extraction_available(offline_data: Dictionary)
 
 const GestorJuego = preload("res://scripts/gestor_juego.gd")
 const EncriptacionManager = preload("res://scripts/encriptacion_manager.gd")
@@ -427,6 +428,46 @@ func max_drag_cerrar_venta(mineral_key: String, ticket_franklin: String, callbac
 		if res.get("success", false):
 			consultar_usuario_en_vivo()
 		callback.call(res)
+	)
+
+# ----------------- MINERÍA OFFLINE Y FRANKLIN GENERAL (VENTA MASIVA) -----------------
+## Consulta a Render el cálculo de minerales extraídos mientras el jugador estuvo ausente
+## Utiliza el reloj oficial del servidor Render (independiente de la hora del cliente)
+func sincronizar_extraccion_offline(callback: Callable = Callable()) -> void:
+	if not has_session:
+		return
+	post_encrypted_gateway({
+		"action": "CALCULAR_EXTRACCION_OFFLINE",
+		"uid": current_user_uid
+	}, func(res: Dictionary):
+		if res.get("hay_extraccion", false):
+			consultar_usuario_en_vivo()
+			offline_extraction_available.emit(res)
+		if callback.is_valid():
+			callback.call(res)
+	)
+
+## Vende masivamente todos los minerales acumulados en offline a través de Franklin General
+func franklin_vender_todo_offline(ticket_franklin_general: String, callback: Callable) -> void:
+	post_encrypted_gateway({
+		"action": "FRANKLIN_VENDER_TODO_OFFLINE",
+		"uid": current_user_uid,
+		"ticket_franklin_general": ticket_franklin_general
+	}, func(res: Dictionary):
+		if res.get("success", false) and res.get("aprobado", false):
+			consultar_usuario_en_vivo()
+		callback.call(res)
+	)
+
+## Cierre de sesión voluntario (desactiva la minería offline en Render)
+func cerrar_sesion_render(callback: Callable = Callable()) -> void:
+	post_encrypted_gateway({
+		"action": "AUTH_LOGOUT",
+		"uid": current_user_uid
+	}, func(res: Dictionary):
+		clear_session()
+		if callback.is_valid():
+			callback.call(res)
 	)
 
 # Métodos legacy para retrocompatibilidad

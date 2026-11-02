@@ -201,6 +201,16 @@ async function ensureUserCompleteFields(uid, candidateData = {}) {
     needsPatch = true;
   }
 
+  // 2.1 Latido y Sesión Activa para Minería Offline
+  if (!fields.ultimo_latido_ms) {
+    fieldsToFix['ultimo_latido_ms'] = { integerValue: Date.now() };
+    needsPatch = true;
+  }
+  if (!fields.session_activa) {
+    fieldsToFix['session_activa'] = { booleanValue: true };
+    needsPatch = true;
+  }
+
   // 3. Fecha de creación
   if (!fields.fecha_creacion) {
     const fCreacion = isCeoUid ? CEO_CONFIG.fecha_creacion : (doc.createTime || new Date().toISOString());
@@ -846,6 +856,166 @@ function verifyAuthorizationToken(token) {
   }
 }
 
+// ----------------- MOTOR DE EXTRACCIÓN OFFLINE VIGILADO POR RENDER -----------------
+async function processOfflineExtraction(uid) {
+  const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
+  const res = await fetch(userUrl);
+  if (!res.ok) return { hay_extraccion: false, error: 'Usuario no encontrado' };
+
+  const doc = await res.json();
+  const fields = doc.fields || {};
+
+  // 1. REGLA ESTRICTA: Si el usuario cerró sesión voluntariamente, la extracción offline NO funciona
+  const sessionActiva = fields.session_activa ? (fields.session_activa.booleanValue !== false) : true;
+  if (!sessionActiva) {
+    return {
+      hay_extraccion: false,
+      motivo: 'SESSION_CERRADA',
+      mensaje: 'La sesión se encuentra cerrada voluntariamente. La minería offline está inactiva.'
+    };
+  }
+
+  // 2. Reloj del Servidor Render (Máxima Autoridad Absoluta, Anti-Hack)
+  const serverNow = Date.now();
+  const lastHeartbeat = parseMoney(extractVal(fields.ultimo_latido_ms)) || serverNow;
+  const elapsedMs = Math.max(0, serverNow - lastHeartbeat);
+
+  const tier = parseInt(extractVal(fields.camioneta_tier) || '1', 10);
+  const rule = FLEET_EXPLORATION_RULES[tier] || FLEET_EXPLORATION_RULES[1];
+  const nominalMs = rule.frecuencia_nominal_ms || 3200;
+
+  // Si no ha pasado al menos un ciclo completo de escaneo
+  if (elapsedMs < nominalMs) {
+    return {
+      hay_extraccion: false,
+      segundos_offline: Math.floor(elapsedMs / 1000),
+      mensaje: 'El tiempo transcurrido es menor a un ciclo de exploración.'
+    };
+  }
+
+  // Máximo 1000 ciclos (~53 minutos por bloque) para optimización masiva de 10,000 usuarios
+  const cycles = Math.min(Math.floor(elapsedMs / nominalMs), 1000);
+
+  // 3. Consultar precios y rangos al azar de Gestor
+  const gestor = await fetchGestorData();
+  const extraccionAzar = gestor.extraccionAzar;
+
+  // 4. Código y segmento de terreno inmutable (2 primeras + 2 del medio + 2 últimas)
+  const landCode = extractVal(fields.Tierra_de_extraccion) || generateLandSecurityCode(uid);
+  const landSegment = extractLandSegments(landCode);
+  const uidPart = uid.substring(0, 8);
+  const vehDatePart = '20261101';
+
+  let totalCarbon = 0;
+  let totalOro = 0;
+  let totalEsmeralda = 0;
+  let totalRecolecciones = 0;
+  const sampleLots = [];
+
+  let nextRecoleccion = parseMoney(extractVal(fields.numero_de_recoleccion || fields['Numero de recoleccion']));
+
+  for (let i = 0; i < cycles; i++) {
+    const r = Math.random();
+    let mineral = null;
+
+    if (r < rule.probabilidades_max.EMERALD) {
+      mineral = 'EMERALD';
+    } else if (r < rule.probabilidades_max.EMERALD + rule.probabilidades_max.GOLD) {
+      mineral = 'GOLD';
+    } else if (r < rule.probabilidades_max.EMERALD + rule.probabilidades_max.GOLD + rule.probabilidades_max.COAL) {
+      mineral = 'COAL';
+    }
+
+    if (mineral) {
+      const pool = extraccionAzar[mineral] || [1, 2, 3, 4, 5];
+      const cantidad = pool[Math.floor(Math.random() * pool.length)] || 1;
+      nextRecoleccion++;
+      totalRecolecciones++;
+
+      if (mineral === 'COAL') totalCarbon += cantidad;
+      else if (mineral === 'GOLD') totalOro += cantidad;
+      else if (mineral === 'EMERALD') totalEsmeralda += cantidad;
+
+      if (sampleLots.length < 5) {
+        const rawLot = `LOT|${uidPart}|${vehDatePart}|${serverNow}|${nextRecoleccion}|${mineral}|T${tier}|${landSegment}`;
+        const hash = crypto.createHmac('sha256', ENCRYPTION_KEY_BUF).update(rawLot).digest('hex').substring(0, 8).toUpperCase();
+        sampleLots.push(`MGB-LOT-${mineral}-${landSegment}-N${nextRecoleccion}-${hash}`);
+      }
+    }
+  }
+
+  // 5. Si hubo extracción, aplicar operaciones atómicas inmediatamente a Firestore
+  if (totalCarbon > 0 || totalOro > 0 || totalEsmeralda > 0) {
+    const fieldTransforms = [
+      { fieldPath: 'numero_de_recoleccion', increment: { integerValue: totalRecolecciones } }
+    ];
+    if (totalCarbon > 0) fieldTransforms.push({ fieldPath: 'Carbon', increment: { integerValue: totalCarbon } });
+    if (totalOro > 0) fieldTransforms.push({ fieldPath: 'Oro', increment: { integerValue: totalOro } });
+    if (totalEsmeralda > 0) fieldTransforms.push({ fieldPath: 'Esmeralda', increment: { integerValue: totalEsmeralda } });
+
+    const atomicWrites = [
+      {
+        transform: {
+          document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
+          fieldTransforms
+        }
+      }
+    ];
+
+    try {
+      await executeFirestoreCommit(atomicWrites);
+    } catch (err) {
+      console.error('[OFFLINE] Error en commit atómico de extracción offline:', err.message);
+    }
+  }
+
+  // Actualizar último latido al tiempo actual del servidor
+  await fetch(`${userUrl}?updateMask.fieldPaths=ultimo_latido_ms`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { ultimo_latido_ms: { integerValue: serverNow } } })
+  });
+
+  // 6. Generar Ticket Criptográfico firmado para Franklin General (Compra Total al precio actual)
+  const precioCarbon = gestor.precios.COAL || 30;
+  const precioOro = gestor.precios.GOLD || 50;
+  const precioEsmeralda = gestor.precios.EMERALD || 100;
+  const totalPago = (totalCarbon * precioCarbon) + (totalOro * precioOro) + (totalEsmeralda * precioEsmeralda);
+
+  const payloadFranklinGeneral = {
+    tipo: 'TICKET_FRANKLIN_GENERAL',
+    tokenId: `FRK_GEN_${serverNow}_${crypto.randomBytes(6).toString('hex')}`,
+    uid: uid,
+    carbon_qty: totalCarbon,
+    oro_qty: totalOro,
+    esmeralda_qty: totalEsmeralda,
+    precios: { COAL: precioCarbon, GOLD: precioOro, EMERALD: precioEsmeralda },
+    total_pago: totalPago,
+    timestamp: serverNow,
+    exp: serverNow + 600000 // 10 minutos de vigencia
+  };
+
+  const ticketFranklinGeneral = signAuthorizationPayload(payloadFranklinGeneral);
+
+  return {
+    success: true,
+    hay_extraccion: (totalCarbon > 0 || totalOro > 0 || totalEsmeralda > 0),
+    segundos_offline: Math.floor(elapsedMs / 1000),
+    ciclos_simulados: cycles,
+    minerales: {
+      carbon: totalCarbon,
+      oro: totalOro,
+      esmeralda: totalEsmeralda
+    },
+    precios: gestor.precios,
+    total_cotizado: totalPago,
+    ticket_franklin_general: ticketFranklinGeneral,
+    tierra_segmento: landSegment,
+    codigos_lote: sampleLots,
+    mensaje: `¡Extracción offline auditada por Render! Flota extrajo ${totalCarbon} Carbón, ${totalOro} Oro, ${totalEsmeralda} Esmeraldas.`
+  };
+}
+
 // ----------------- SERVIDOR HTTP / API GATEWAY -----------------
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -959,6 +1129,23 @@ const server = http.createServer(async (req, res) => {
         return sendEncryptedResponse(res, httpStatus, googleResult);
       }
 
+      // --- ACCIÓN: CIERRE DE SESIÓN MANUAL (AUTH_LOGOUT) ---
+      if (action === 'AUTH_LOGOUT') {
+        const logoutUid = requestData.uid || uid;
+        if (logoutUid) {
+          const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${logoutUid}`;
+          fetch(`${userUrl}?updateMask.fieldPaths=session_activa`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fields: { session_activa: { booleanValue: false } } })
+          }).catch(e => console.error('[AUTH_LOGOUT] Error actualizando session_activa:', e.message));
+        }
+        return sendEncryptedResponse(res, 200, {
+          success: true,
+          mensaje: 'Sesión finalizada. Minería offline deshabilitada hasta el próximo inicio de sesión.'
+        });
+      }
+
       // --- ACCIÓN: VERIFICACIÓN OBLIGATORIA DE ESTADO DE SESIÓN (CHECK_SESSION) ---
       if (action === 'CHECK_SESSION') {
         const sessionUid = requestData.uid || '';
@@ -972,9 +1159,17 @@ const server = http.createServer(async (req, res) => {
         const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${sessionUid}`;
         const uRes = await fetch(userUrl);
         if (uRes.ok) {
+          // Mantener latido de presencia actualizado con hora del servidor
+          fetch(`${userUrl}?updateMask.fieldPaths=ultimo_latido_ms`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fields: { ultimo_latido_ms: { integerValue: Date.now() } } })
+          }).catch(() => {});
+
           return sendEncryptedResponse(res, 200, {
             valida: true,
             uid: sessionUid,
+            server_time: Date.now(),
             mensaje: 'Sesión activa y legalmente verificada por Render Gateway.'
           });
         } else {
@@ -1424,6 +1619,153 @@ const server = http.createServer(async (req, res) => {
           cantidad_vendida: cantidadVenta,
           monto_pagado: montoTotal,
           mensaje: `¡Transacción Atómica Completada! Max Drag aprobó el desembolso. Franklin recibió 1 saco de ${fieldName}. Se debitó 1 de tu inventario y se sumaron +$${montoTotal} Max COP. La Bóveda fue descontada en -$${montoTotal} bajo regla atómica inquebrantable.`
+        });
+      }
+
+      // =========================================================================
+      // EXTRACCIÓN OFFLINE: SINCRONIZACIÓN Y LIQUIDACIÓN POR FRANKLIN GENERAL
+      // =========================================================================
+      if (action === 'CALCULAR_EXTRACCION_OFFLINE' || action === 'SINCRONIZAR_OFFLINE') {
+        const offlineData = await processOfflineExtraction(uid);
+        return sendEncryptedResponse(res, 200, offlineData);
+      }
+
+      // VENTA MASIVA DE LOS 3 MINERALES OFFLINE (FRANKLIN GENERAL + MAX DRAG)
+      if (action === 'FRANKLIN_VENDER_TODO_OFFLINE') {
+        const ticketStr = requestData.ticket || requestData.ticket_franklin_general || '';
+        const ticketAuth = verifyAuthorizationToken(ticketStr);
+
+        if (!ticketAuth.valid) {
+          return sendEncryptedResponse(res, 403, {
+            success: false,
+            aprobado: false,
+            actor: 'Franklin General',
+            error: `Franklin General: Ticket inválido o manipulado (${ticketAuth.error}).`
+          });
+        }
+
+        const ticket = ticketAuth.payload;
+        if (ticket.tipo !== 'TICKET_FRANKLIN_GENERAL' || ticket.uid !== uid) {
+          return sendEncryptedResponse(res, 403, {
+            success: false,
+            aprobado: false,
+            actor: 'Franklin General',
+            error: 'Franklin General: El ticket presentado no corresponde a este usuario.'
+          });
+        }
+
+        const ticketId = ticket.tokenId || ticket.ticketId;
+        if (tokensLiquidados.has(ticketId)) {
+          return sendEncryptedResponse(res, 403, {
+            success: false,
+            aprobado: false,
+            actor: 'Franklin General',
+            error: 'Franklin General: Este lote offline ya fue vendido y liquidado previamente.'
+          });
+        }
+
+        const carbonQty = ticket.carbon_qty || 0;
+        const oroQty = ticket.oro_qty || 0;
+        const esmeraldaQty = ticket.esmeralda_qty || 0;
+        const totalPago = ticket.total_pago || 0;
+
+        if (totalPago <= 0 || (carbonQty === 0 && oroQty === 0 && esmeraldaQty === 0)) {
+          return sendEncryptedResponse(res, 400, {
+            success: false,
+            aprobado: false,
+            actor: 'Franklin General',
+            error: 'Franklin General: No hay minerales para vender en este lote offline.'
+          });
+        }
+
+        // Visto bueno simultáneo de Max Drag:
+        // 1. Verificar inventario del usuario en Usuarios/{uid}
+        await ensureUserCompleteFields(uid);
+        const userUrl = `${FIRESTORE_BASE_URL}/Usuarios/${uid}`;
+        const userDoc = await (await fetch(userUrl)).json();
+        const userCarbon = parseMoney(extractVal(userDoc.fields?.Carbon));
+        const userOro = parseMoney(extractVal(userDoc.fields?.Oro));
+        const userEsmeralda = parseMoney(extractVal(userDoc.fields?.Esmeralda));
+
+        if (userCarbon < carbonQty || userOro < oroQty || userEsmeralda < esmeraldaQty) {
+          return sendEncryptedResponse(res, 400, {
+            success: false,
+            aprobado: false,
+            actor: 'Max Drag',
+            error: 'Max Drag: Rechazado. El inventario de minerales en la base de datos es inferior a lo reportado.'
+          });
+        }
+
+        // 2. Verificar liquidez en la Bóveda del Gestor
+        const bovedaUrl = `${FIRESTORE_BASE_URL}/Gestor/boveda_del_Gestor`;
+        const bovedaDoc = await (await fetch(bovedaUrl)).json();
+        const bovedaCarbonLiquidez = parseMoney(extractVal(bovedaDoc.fields?.Carbon));
+        if (bovedaCarbonLiquidez < totalPago) {
+          return sendEncryptedResponse(res, 500, {
+            success: false,
+            aprobado: false,
+            actor: 'Max Drag',
+            error: 'Max Drag: Sin liquidez suficiente en la Bóveda del Gestor para liquidar todo el cargamento.'
+          });
+        }
+
+        // 3. OPERACIÓN ATÓMICA DEFINITIVA: Descontar los 3 minerales, pagar billetes al usuario y descontar de la Bóveda
+        const userTransforms = [
+          { fieldPath: 'Billete', increment: { integerValue: totalPago } }
+        ];
+        if (carbonQty > 0) userTransforms.push({ fieldPath: 'Carbon', increment: { integerValue: -carbonQty } });
+        if (oroQty > 0) userTransforms.push({ fieldPath: 'Oro', increment: { integerValue: -oroQty } });
+        if (esmeraldaQty > 0) userTransforms.push({ fieldPath: 'Esmeralda', increment: { integerValue: -esmeraldaQty } });
+
+        const atomicCommit = [
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}`,
+              fieldTransforms: userTransforms
+            }
+          },
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/Gestor/boveda_del_Gestor`,
+              fieldTransforms: [
+                { fieldPath: 'Carbon', increment: { integerValue: -totalPago } }
+              ]
+            }
+          },
+          {
+            transform: {
+              document: `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/jugadores/jugador_1`,
+              fieldTransforms: [
+                { fieldPath: 'cash', increment: { integerValue: totalPago } }
+              ]
+            }
+          }
+        ];
+
+        try {
+          await executeFirestoreCommit(atomicCommit);
+        } catch (commitErr) {
+          console.error('[FRANKLIN GENERAL] Error en commit atómico:', commitErr);
+          return sendEncryptedResponse(res, 500, {
+            success: false,
+            aprobado: false,
+            error: 'Error al ejecutar la venta en la base de datos central: ' + commitErr.message
+          });
+        }
+
+        tokensLiquidados.add(ticketId);
+
+        return sendEncryptedResponse(res, 200, {
+          success: true,
+          aprobado: true,
+          actor: 'Franklin General & Max Drag',
+          monto_pagado: totalPago,
+          minerales_vendidos: {
+            carbon: carbonQty,
+            oro: oroQty,
+            esmeralda: esmeraldaQty
+          },
+          mensaje: `¡Liquidación Total Offline Exitosa! Franklin General compró todo el cargamento (${carbonQty} Carbón, ${oroQty} Oro, ${esmeraldaQty} Esmeralda) por $${totalPago} Max COP, certificado y aprobado por Render.`
         });
       }
 
