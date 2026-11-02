@@ -106,8 +106,8 @@ func open_for_resource(resource_key: String) -> void:
 	_mostrar_vista_franklin()
 
 	btn_vender.disabled = true
-	btn_vender.text = "Consultando a Render..."
-	target_dialogue_text = "Franklin Martínez: Un momento por favor... Consultando con el Gateway de Render si tienes %s registrado en tu inventario central..." % mineral_name
+	btn_vender.text = "Consultando..."
+	target_dialogue_text = "Franklin Martínez: Un momento por favor... Verificando tu cargamento de %s..." % mineral_name
 	_iniciar_escritura_dialogo()
 	visible = true
 
@@ -124,12 +124,12 @@ func _on_franklin_verificacion_recibida(res: Dictionary) -> void:
 		var stock = res.get("stock_en_bd", 1)
 		var m_nom = res.get("mineral_nombre", mineral_name)
 		
-		target_dialogue_text = "Franklin Martínez: ¡Confirmado por Render! Tienes %d saco(s) de %s en tu cuenta de usuario. Te ofrezco $%d por el cargamento." % [stock, m_nom, current_price]
+		target_dialogue_text = "Franklin Martínez: ¡Excelente! Tienes %d saco(s) de %s en tu inventario. Te ofrezco $%d Dragcoins por el cargamento." % [stock, m_nom, current_price]
 		btn_vender.disabled = false
 		btn_vender.text = "✔ Vender ($%d)" % current_price
 	else:
 		token_visto_bueno = ""
-		target_dialogue_text = res.get("error", "Franklin Martínez: Render indica que no posees este mineral en tu bóveda. No puedo comprarte nada inexistente.")
+		target_dialogue_text = res.get("error", "Franklin Martínez: Veo que no tienes este mineral disponible en este momento.")
 		btn_vender.disabled = true
 		btn_vender.text = "✖ Mineral No Poseído"
 		lbl_stamp.visible = true
@@ -210,11 +210,11 @@ func open_for_offline_general(offline_data: Dictionary) -> void:
 	close_timer = 0.0
 	_mostrar_vista_franklin()
 
-	speaker_tag.text = "🏛️ Franklin General (Liquidador Total de Minería Offline)"
-	target_dialogue_text = "Franklin General: ¡Bienvenido de vuelta! Mientras estuviste offline tu flota continuó operando bajo supervisión de Render (Terreno: %s) y extrajo:\n• %d Carbón | • %d Oro | • %d Esmeraldas\n\nTotal oficial a liquidar por todo el cargamento: $%d Max COP.\n¿Deseas vender los 3 minerales juntos ahora?" % [seg, c_qty, o_qty, e_qty, offline_total_pago]
+	speaker_tag.text = "🏛️ Franklin General (Comprador de Minerales)"
+	target_dialogue_text = "Franklin General: ¡Bienvenido de vuelta! Durante tu ausencia tu flota de exploración extrajo:\n• %d Carbón | • %d Oro | • %d Esmeraldas\n\nTotal a pagar por todo el cargamento: %d Dragcoins.\n¿Deseas vender los 3 minerales juntos ahora?" % [c_qty, o_qty, e_qty, offline_total_pago]
 
 	btn_vender.disabled = false
-	btn_vender.text = "💰 Vender Todo ($%d Max COP)" % offline_total_pago
+	btn_vender.text = "💰 Vender Todo (%d Dragcoins)" % offline_total_pago
 	if is_instance_valid(btn_cancelar):
 		btn_cancelar.text = "Guardar en Inventario"
 
@@ -225,8 +225,8 @@ func open_for_offline_general(offline_data: Dictionary) -> void:
 func _ejecutar_cierre_offline_max_drag() -> void:
 	_mostrar_vista_max_drag()
 	btn_vender.disabled = true
-	btn_vender.text = "Verificando con Render..."
-	target_dialogue_text = "Max Drag (CFO): Comprobando simultáneamente inventario total de los 3 minerales y liquidez en la Bóveda del Gestor..."
+	btn_vender.text = "Procesando venta..."
+	target_dialogue_text = "Max Drag (CFO): Revisando la liquidación del cargamento..."
 	_iniciar_escritura_dialogo()
 
 	if FirebaseManager.instance != null:
@@ -234,21 +234,21 @@ func _ejecutar_cierre_offline_max_drag() -> void:
 			if res.get("success", false) and res.get("aprobado", false):
 				fase_actual = FaseModal.MAX_DRAG_APROBADO
 				lbl_stamp.visible = true
-				lbl_stamp.text = "✔ VISTO BUENO: LIQUIDACIÓN TOTAL OFFLINE"
+				lbl_stamp.text = "✔ VISTO BUENO: VENTA TOTAL"
 				lbl_stamp.add_theme_color_override("font_color", Color(0.2, 0.95, 0.45, 1))
 				if is_instance_valid(max_drag_anim):
 					max_drag_anim.trigger_approval_nod()
 				var pagado = int(res.get("monto_pagado", offline_total_pago))
-				target_dialogue_text = "Max Drag (CFO): ¡Liquidación total aprobada! Franklin General te pagó +%d Dragcoins (Monedas). Al llegar a 100, las convertiremos en Billetes con el CEO Render." % pagado
+				target_dialogue_text = "Max Drag (CFO): ¡Venta aprobada! Has recibido +%d Dragcoins. Al acumular 100 monedas, las convertiremos en 1 Billete." % pagado
 				GestorJuego.add_coins(pagado)
 				btn_vender.disabled = false
 				btn_vender.text = "✔ Finalizar y Continuar"
 			else:
 				fase_actual = FaseModal.MAX_DRAG_RECHAZADO
 				lbl_stamp.visible = true
-				lbl_stamp.text = "✖ RECHAZADO: SEGURIDAD FINANCIERA"
+				lbl_stamp.text = "✖ OPERACIÓN NO DISPONIBLE"
 				lbl_stamp.add_theme_color_override("font_color", Color(0.95, 0.3, 0.3, 1))
-				target_dialogue_text = res.get("error", "Max Drag: La liquidación masiva no pudo ser autorizada.")
+				target_dialogue_text = res.get("error", "Max Drag: La liquidación no pudo ser completada en este momento.")
 				btn_vender.disabled = false
 				btn_vender.text = "✖ Entendido"
 			_iniciar_escritura_dialogo()
@@ -272,8 +272,8 @@ func _on_btn_principal_pressed() -> void:
 func _ejecutar_cierre_venta_max_drag() -> void:
 	_mostrar_vista_max_drag()
 	btn_vender.disabled = true
-	btn_vender.text = "Auditando cuentas..."
-	target_dialogue_text = "Max Drag (CFO): Comprobando simultáneamente stock en tu inventario y liquidez en la Bóveda del Gestor..."
+	btn_vender.text = "Verificando venta..."
+	target_dialogue_text = "Max Drag (CFO): Revisando la disponibilidad para la compra..."
 	_iniciar_escritura_dialogo()
 
 	if FirebaseManager.instance != null:
@@ -286,16 +286,13 @@ func _on_max_drag_cierre_recibido(res: Dictionary) -> void:
 		var monto_ganado = int(res.get("monto_pagado", current_price))
 		fase_actual = FaseModal.MAX_DRAG_APROBADO
 		lbl_stamp.visible = true
-		if res.get("recarga_soberana_aplicada", false):
-			lbl_stamp.text = "✔ VISTO BUENO: MAX DRAG & CEO RENDER (RECARGA SOBERANA)"
-		else:
-			lbl_stamp.text = "✔ VISTO BUENO: MAX DRAG (OPERACIÓN ATÓMICA)"
+		lbl_stamp.text = "✔ VISTO BUENO: MAX DRAG"
 		lbl_stamp.add_theme_color_override("font_color", Color(0.2, 0.95, 0.45, 1))
 
 		if is_instance_valid(max_drag_anim):
 			max_drag_anim.trigger_approval_nod()
 
-		target_dialogue_text = res.get("mensaje", "¡Transacción Atómica Completada! Franklin pagó +%d Dragcoins (Monedas). Al llegar a 100, se convertirán en Billetes con el CEO Render." % monto_ganado)
+		target_dialogue_text = res.get("mensaje", "¡Venta completada con éxito! Has recibido +%d Dragcoins. Al acumular 100, se convertirán en 1 Billete." % monto_ganado)
 		GestorJuego.add_coins(monto_ganado)
 		btn_vender.disabled = false
 		btn_vender.text = "✔ Finalizar y Continuar"
@@ -303,9 +300,9 @@ func _on_max_drag_cierre_recibido(res: Dictionary) -> void:
 		token_visto_bueno = ""
 		fase_actual = FaseModal.MAX_DRAG_RECHAZADO
 		lbl_stamp.visible = true
-		lbl_stamp.text = "✖ RECHAZADO: SEGURIDAD FINANCIERA"
+		lbl_stamp.text = "✖ FONDOS NO DISPONIBLES"
 		lbl_stamp.add_theme_color_override("font_color", Color(0.95, 0.3, 0.3, 1))
-		target_dialogue_text = res.get("error", "Max Drag: Fondos insuficientes. Se notificó al CEO Render. Tus recursos están 100% seguros y no fueron descontados.")
+		target_dialogue_text = res.get("error", "Max Drag: La bóveda se encuentra en proceso de recarga. Tus recursos están intactos y no se ha descontado nada.")
 		btn_vender.disabled = false
 		btn_vender.text = "✖ Entendido"
 

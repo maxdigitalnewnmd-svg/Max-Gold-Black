@@ -298,7 +298,7 @@ func _on_user_profile_updated(_profile: Dictionary) -> void:
 func _on_conversion_monedas_completada(monedas_restadas: int, billetes_sumados: int) -> void:
 	print("[Mundo] ¡Conversión exitosa! -%d Monedas -> +%d Billete. Verificado por CEO Render." % [monedas_restadas, billetes_sumados])
 	if is_instance_valid(lbl_boveda_personal):
-		lbl_boveda_personal.text = "🪙 ➔ 💵 Max Drag: ¡%d Dragcoins convertidas a +%d Max COP! Verificado por CEO Render." % [monedas_restadas, billetes_sumados]
+		lbl_boveda_personal.text = "🪙 ➔ 💵 Max Drag: ¡%d Dragcoins convertidas a +%d Billete exitosamente!" % [monedas_restadas, billetes_sumados]
 	_update_user_profile_card()
 
 func _update_user_profile_card() -> void:

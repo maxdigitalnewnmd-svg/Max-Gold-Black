@@ -1129,7 +1129,7 @@ async function processOfflineExtraction(uid) {
     ticket_franklin_general: ticketFranklinGeneral,
     tierra_segmento: landSegment,
     codigos_lote: sampleLots,
-    mensaje: `¡Extracción offline auditada por Render! Flota extrajo ${totalCarbon} Carbón, ${totalOro} Oro, ${totalEsmeralda} Esmeraldas.`
+    mensaje: `¡Bienvenido de vuelta! Tu flota extrajo ${totalCarbon} Carbón, ${totalOro} Oro, ${totalEsmeralda} Esmeraldas mientras estuviste ausente.`
   };
 }
 
@@ -1287,12 +1287,12 @@ const server = http.createServer(async (req, res) => {
             valida: true,
             uid: sessionUid,
             server_time: Date.now(),
-            mensaje: 'Sesión activa y legalmente verificada por Render Gateway.'
+            mensaje: 'Sesión activa y verificada.'
           });
         } else {
           return sendEncryptedResponse(res, 401, {
             valida: false,
-            error: 'Sesión caducada o usuario no encontrado en la base de datos.'
+            error: 'Sesión caducada o usuario no encontrado.'
           });
         }
       }
@@ -1308,7 +1308,7 @@ const server = http.createServer(async (req, res) => {
         if (candidateUser === 'dramax' || candidateEmail === CEO_CONFIG.correo || candidateTipo === 'CEO') {
           console.warn(`[SEGURIDAD] Intento de suplantación del CEO detectado por UID no autorizado: ${uid}`);
           return sendEncryptedResponse(res, 403, {
-            error: 'VIOLACIÓN DE IDENTIDAD: Intento de suplantación del CEO Dramax bloqueado por Render Gateway.',
+            error: 'Acceso no autorizado: identidad restringida.',
             codigo: 'CEO_IMPERSONATION_BLOCKED'
           });
         }
@@ -1320,7 +1320,7 @@ const server = http.createServer(async (req, res) => {
         return sendEncryptedResponse(res, 200, {
           success: true,
           usuario: user,
-          mensaje: 'Identidad corporativa verificada y protegida por Render.'
+          mensaje: 'Perfil de usuario cargado con éxito.'
         });
       }
 
@@ -1380,8 +1380,8 @@ const server = http.createServer(async (req, res) => {
           return sendEncryptedResponse(res, 200, {
             success: false,
             aprobado: false,
-            actor: 'CEO Render & Max Drag',
-            error: `CEO Render: Rechazado. El saldo real de Monedas (${saldoMonedas}) es insuficiente para convertir ${monedasADescontar} Monedas. Historial conservado para reintento.`,
+            actor: 'Max Drag',
+            error: `Max Drag: Saldo insuficiente. Necesitas 100 Monedas para canjear por 1 Billete.`,
             saldo_actual_monedas: saldoMonedas,
             monedas_requeridas: monedasADescontar
           });
@@ -1429,14 +1429,14 @@ const server = http.createServer(async (req, res) => {
           return sendEncryptedResponse(res, 500, {
             success: false,
             aprobado: false,
-            actor: 'CEO Render',
-            error: 'Error al procesar la conversión en Firestore. Historial conservado para reintento: ' + convErr.message
+            actor: 'Max Drag',
+            error: 'No se pudo completar la conversión en este momento. Inténtalo de nuevo más tarde.'
           });
         }
 
         // 4. ELIMINAR INMEDIATAMENTE EL HISTORIAL DE LA BASE DE DATOS (Zero Basura)
         await deleteUserField(uid, 'historial_conversion_pendiente');
-        console.log(`[CEO RENDER] Conversión completada para ${uid}: -${monedasADescontar} Monedas, +${billetesAAcreditar} Billete. Historial eliminado de Firestore.`);
+        console.log(`[CONVERSION] Conversión completada para ${uid}: -${monedasADescontar} Monedas, +${billetesAAcreditar} Billete.`);
 
         const nuevoSaldoMoneda = saldoMonedas - monedasADescontar;
         const nuevoSaldoBillete = parseMoney(extractVal(uDoc.fields?.Billete)) + billetesAAcreditar;
@@ -1444,13 +1444,13 @@ const server = http.createServer(async (req, res) => {
         return sendEncryptedResponse(res, 200, {
           success: true,
           aprobado: true,
-          actor: 'CEO Render (con visto bueno de Max Drag)',
+          actor: 'Max Drag',
           monedas_convertidas: monedasADescontar,
           billetes_acreditados: billetesAAcreditar,
           nuevo_saldo_moneda: nuevoSaldoMoneda,
           nuevo_saldo_billete: nuevoSaldoBillete,
           historial_eliminado: true,
-          mensaje: `¡Conversión verificada y aprobada por el CEO Render! Max Drag procesó la solicitud: se debitaron -${monedasADescontar} Monedas y se acreditó +${billetesAAcreditar} Billete. El historial en espera fue eliminado inmediatamente de la base de datos.`
+          mensaje: `¡Conversión completada con éxito! Has canjeado 100 Monedas por 1 Billete.`
         });
       }
 
@@ -1596,7 +1596,7 @@ const server = http.createServer(async (req, res) => {
           console.error('[TALLER] Error en commit atómico de compra de camioneta:', pErr);
           return sendEncryptedResponse(res, 500, {
             success: false,
-            error: 'Error al procesar la compra en la base de datos central: ' + pErr.message
+            error: 'No se pudo completar la compra en este momento. Inténtalo de nuevo.'
           });
         }
 
@@ -1610,7 +1610,7 @@ const server = http.createServer(async (req, res) => {
           fecha_compra: fechaCompraIso,
           costo_pagado: costoBilletes,
           nuevo_saldo_billetes: nuevoSaldo,
-          mensaje: `¡Adquisición autorizada por Render! ${truckTitulo} comprada por ${costoBilletes} Billetes. Código encriptado asignado: ${truckSecurityCode}`
+          mensaje: `¡Felicitaciones! Has adquirido ${truckTitulo} con éxito por ${costoBilletes} Billetes.`
         });
       }
 
@@ -1854,7 +1854,7 @@ const server = http.createServer(async (req, res) => {
           return sendEncryptedResponse(res, 404, {
             verificado: false,
             actor: 'Franklin Martínez',
-            error: 'Franklin Martínez: No pude localizar tu registro de usuario en la base de datos.'
+            error: 'Franklin Martínez: No pude localizar tu perfil de usuario.'
           });
         }
 
@@ -1868,7 +1868,7 @@ const server = http.createServer(async (req, res) => {
             actor: 'Franklin Martínez',
             mineral: minKey,
             stock_actual: stockActual,
-            error: `Franklin Martínez: Consulté a Render y tu inventario de ${fieldName} está en 0. No puedo ofrecerte compra por recursos inexistentes.`
+            error: `Franklin Martínez: No tienes ${fieldName} disponible en tu inventario en este momento.`
           });
         }
 
@@ -1898,7 +1898,7 @@ const server = http.createServer(async (req, res) => {
           stock_en_bd: stockActual,
           precio_unitario: precioOficial,
           ticket_franklin: ticketFranklin,
-          mensaje: `Franklin Martínez: ¡Confirmado con la base de datos! Tienes ${stockActual} unidad(es) de ${fieldName}. Te ofrezco formalmente $${precioOficial} por saco.`
+          mensaje: `Franklin Martínez: Tienes ${stockActual} saco(s) de ${fieldName}. Te ofrezco $${precioOficial} Dragcoins por el cargamento.`
         });
       }
 
@@ -2115,9 +2115,7 @@ const server = http.createServer(async (req, res) => {
           monto_pagado: montoTotal,
           recarga_soberana_aplicada: recargaSoberanaAplicada,
           monto_inyectado_soberano: montoInyeccionSoberana,
-          mensaje: recargaSoberanaAplicada
-            ? `¡Transacción Aprobada! Max Drag notificó fondos insuficientes en Franklin; el CEO Render verificó y aprobó inyección soberana de +$${montoInyeccionSoberana} a la Bóveda del Gestor manteniendo intacto el campo 'Recargar' (1,000,000). Franklin te pagó +${montoTotal} Dragcoins (Monedas). Al llegar a 100 Monedas se convertirán en Billetes.`
-            : `¡Transacción Atómica Completada! Max Drag aprobó el desembolso. Franklin Martínez pagó +${montoTotal} Dragcoins (Monedas). Franklin jamás otorga Billetes; al llegar a 100 Monedas, Max Drag y el CEO Render las convertirán en 1 Billete (Max COP).`
+          mensaje: `¡Venta completada con éxito! Has recibido +${montoTotal} Dragcoins. Recuerda que al acumular 100 Monedas, se convertirán automáticamente en 1 Billete.`
         });
       }
 
@@ -2255,7 +2253,7 @@ const server = http.createServer(async (req, res) => {
             success: false,
             aprobado: false,
             actor: 'Max Drag',
-            error: 'Max Drag: Rechazado. El inventario de minerales en la base de datos es inferior a lo reportado.'
+            error: 'Max Drag: No dispones de los minerales necesarios para completar esta venta.'
           });
         }
 
@@ -2285,8 +2283,8 @@ const server = http.createServer(async (req, res) => {
             return sendEncryptedResponse(res, 200, {
               success: false,
               aprobado: false,
-              actor: 'Max Drag & CEO Render',
-              error: 'Max Drag: Sin liquidez suficiente en la Bóveda del Gestor para liquidar todo el cargamento. Minerales del usuario preservados intactos.'
+              actor: 'Max Drag',
+              error: 'Max Drag: Fondos insuficientes en la bóveda en este momento. Tus recursos se conservan intactos.'
             });
           }
         }
@@ -2332,7 +2330,7 @@ const server = http.createServer(async (req, res) => {
           return sendEncryptedResponse(res, 500, {
             success: false,
             aprobado: false,
-            error: 'Error al ejecutar la venta en la base de datos central: ' + commitErr.message
+            error: 'No se pudo completar la venta en este momento. Inténtalo de nuevo más tarde.'
           });
         }
 
@@ -2348,7 +2346,7 @@ const server = http.createServer(async (req, res) => {
             oro: oroQty,
             esmeralda: esmeraldaQty
           },
-          mensaje: `¡Liquidación Total Offline Exitosa! Franklin General compró todo el cargamento (${carbonQty} Carbón, ${oroQty} Oro, ${esmeraldaQty} Esmeralda) por +${totalPago} Dragcoins (Monedas). Franklin jamás otorga Billetes; al acumular 100 Monedas, Max Drag y el CEO Render las convertirán en 1 Billete.`
+          mensaje: `¡Venta completada con éxito! Has recibido +${totalPago} Dragcoins por todo el cargamento. Al acumular 100 Monedas, se convertirán en 1 Billete.`
         });
       }
 

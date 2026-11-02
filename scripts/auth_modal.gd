@@ -113,7 +113,7 @@ func _on_btn_do_login_pressed() -> void:
 
 	is_processing = true
 	btn_do_login.disabled = true
-	btn_do_login.text = "Verificando con Render..."
+	btn_do_login.text = "Iniciando sesión..."
 	lbl_status_login.text = ""
 
 	if FirebaseManager.instance != null:
@@ -156,7 +156,7 @@ func _on_btn_do_register_pressed() -> void:
 
 	is_processing = true
 	btn_do_register.disabled = true
-	btn_do_register.text = "Auditando Registro en Render..."
+	btn_do_register.text = "Creando cuenta..."
 	lbl_status_register.text = ""
 
 	if FirebaseManager.instance != null:
@@ -187,7 +187,7 @@ func _on_btn_do_google_pressed() -> void:
 
 	is_processing = true
 	btn_do_google.disabled = true
-	btn_do_google.text = "Validando y fusionando con Render..."
+	btn_do_google.text = "Iniciando con Google..."
 	lbl_status_google.text = ""
 
 	if FirebaseManager.instance != null:
