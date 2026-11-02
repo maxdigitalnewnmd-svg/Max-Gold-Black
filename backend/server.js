@@ -357,51 +357,137 @@ async function getOrSyncUser(uid, candidateData = {}) {
   };
 }
 
-// ----------------- AUTENTICACIÓN FIREBASE AUTH VÍA RENDER -----------------
-async function handleFirebaseAuthLogin(email, password) {
-  const url = `${FIREBASE_AUTH_BASE}:signInWithPassword?key=${FIREBASE_API_KEY}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, returnSecureToken: true })
-  });
+// Helper para generar hash criptográfico seguro de contraseña por usuario
+function hashUserPassword(uid, password) {
+  const salt = `MGB_SALT_${uid}_2026`;
+  return crypto.createHmac('sha256', ENCRYPTION_KEY_BUF).update(`${password}:${salt}`).digest('hex');
+}
 
-  const data = await response.json();
-  if (!response.ok) {
-    const errorMsg = data.error?.message || 'ERROR_AUTH';
-    if (errorMsg === 'EMAIL_NOT_FOUND') {
+// ----------------- AUTENTICACIÓN FIREBASE AUTH & GESTOR DE IDENTIDADES VÍA RENDER -----------------
+async function handleFirebaseAuthLogin(email, password) {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+
+  // 1. Buscar usuario en Firestore
+  const existingUser = await findUserByEmail(normalizedEmail);
+
+  if (!existingUser) {
+    // Si no está en Firestore, comprobar en Firebase Auth
+    try {
+      const url = `${FIREBASE_AUTH_BASE}:signInWithPassword?key=${FIREBASE_API_KEY}`;
+      const fbRes = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, password, returnSecureToken: true })
+      });
+      const fbData = await fbRes.json();
+      if (!fbRes.ok) {
+        const err = fbData.error?.message || '';
+        if (err === 'EMAIL_NOT_FOUND' || err === 'INVALID_LOGIN_CREDENTIALS') {
+          return { success: false, code: 'EMAIL_NOT_FOUND', error: 'El usuario no existe. Debe crear una cuenta para ingresar.' };
+        }
+        return { success: false, code: 'AUTH_FAILED', error: 'Credenciales inválidas o usuario no registrado.' };
+      }
+      const uid = fbData.localId;
+      const userProfile = await getOrSyncUser(uid, { correo: normalizedEmail });
+      return {
+        success: true,
+        token: fbData.idToken,
+        usuario: userProfile,
+        mensaje: `¡Bienvenido de nuevo, ${userProfile.username}! Sesión iniciada con éxito.`
+      };
+    } catch (e) {
       return { success: false, code: 'EMAIL_NOT_FOUND', error: 'El usuario no existe. Debe crear una cuenta para ingresar.' };
     }
-    if (errorMsg === 'INVALID_PASSWORD' || errorMsg === 'INVALID_LOGIN_CREDENTIALS') {
-      return { success: false, code: 'INVALID_PASSWORD', error: 'Contraseña o credenciales incorrectas.' };
-    }
-    if (errorMsg === 'USER_DISABLED') {
-      return { success: false, code: 'USER_DISABLED', error: 'Esta cuenta ha sido inhabilitada por la dirección.' };
-    }
-    if (errorMsg.includes('TOO_MANY_ATTEMPTS')) {
-      return { success: false, code: 'TOO_MANY_ATTEMPTS', error: 'Demasiados intentos fallidos. Intente más tarde.' };
-    }
-    return { success: false, code: errorMsg, error: 'Error al iniciar sesión: verifique sus credenciales.' };
   }
 
-  const uid = data.localId;
-  const userProfile = await getOrSyncUser(uid, { correo: email });
+  // 2. Si el usuario existe en Firestore:
+  const fields = existingUser.fields || {};
+  const hasPassword = fields.has_password?.booleanValue === true || (fields.password_hash && fields.password_hash.stringValue);
+
+  // REGLA ESTRICTA: Si se creó solo con Google y no se ha registrado con contraseña
+  if (!hasPassword) {
+    console.warn(`[AUTH_LOGIN] Login con contraseña denegado: Usuario ${existingUser.uid} creado solo con Google sin contraseña.`);
+    return {
+      success: false,
+      code: 'USER_REGISTERED_ONLY_WITH_GOOGLE',
+      error: 'El usuario no se ha registrado con contraseña (esta cuenta fue creada únicamente mediante Google). Por favor regístrese en la opción "Registrarse" con este correo y una contraseña para vincularla, o inicie sesión con Google.'
+    };
+  }
+
+  // 3. Si tiene contraseña registrada, verificar hash seguro
+  const passHash = hashUserPassword(existingUser.uid, password);
+  const storedHash = fields.password_hash?.stringValue;
+
+  if (storedHash && passHash === storedHash) {
+    const userProfile = await getOrSyncUser(existingUser.uid, { correo: normalizedEmail });
+    return {
+      success: true,
+      token: `SESSION_${existingUser.uid}_${Date.now()}`,
+      usuario: userProfile,
+      mensaje: userProfile.es_ceo
+        ? '¡Bienvenido de nuevo, Señor CEO Dramax! Sesión corporativa iniciada.'
+        : `¡Bienvenido de nuevo, ${userProfile.username}! Sesión iniciada con éxito.`
+    };
+  }
+
+  // Verificar alternativamente con Firebase Auth por compatibilidad
+  try {
+    const url = `${FIREBASE_AUTH_BASE}:signInWithPassword?key=${FIREBASE_API_KEY}`;
+    const fbRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail, password, returnSecureToken: true })
+    });
+    if (fbRes.ok) {
+      const fbData = await fbRes.json();
+      const userProfile = await getOrSyncUser(existingUser.uid, { correo: normalizedEmail });
+      return {
+        success: true,
+        token: fbData.idToken,
+        usuario: userProfile,
+        mensaje: userProfile.es_ceo
+          ? '¡Bienvenido de nuevo, Señor CEO Dramax! Sesión corporativa iniciada.'
+          : `¡Bienvenido de nuevo, ${userProfile.username}! Sesión iniciada con éxito.`
+      };
+    }
+  } catch (e) {}
 
   return {
-    success: true,
-    token: data.idToken,
-    refreshToken: data.refreshToken,
-    expiresIn: data.expiresIn,
-    usuario: userProfile,
-    mensaje: userProfile.es_ceo
-      ? '¡Bienvenido de nuevo, Señor CEO Dramax! Sesión corporativa iniciada.'
-      : `¡Bienvenido de nuevo, ${userProfile.username}! Sesión iniciada con éxito.`
+    success: false,
+    code: 'INVALID_PASSWORD',
+    error: 'Contraseña incorrecta. Por favor verifique sus datos o inicie sesión con Google si vinculó su cuenta.'
   };
 }
 
 async function handleFirebaseAuthRegister(email, password, username) {
-  // Prohibición estricta de multicuentas y suplantación del CEO
-  if (email.toLowerCase() === CEO_CONFIG.correo.toLowerCase()) {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+
+  // Prohibición estricta de suplantación del CEO
+  if (normalizedEmail === CEO_CONFIG.correo.toLowerCase()) {
+    // Si es el CEO registrando su contraseña por primera vez, vincularla al UID del CEO
+    const ceoDoc = await findUserByEmail(CEO_CONFIG.correo);
+    if (ceoDoc && (!ceoDoc.fields?.password_hash || ceoDoc.fields?.has_password?.booleanValue === false)) {
+      const passHash = hashUserPassword(CEO_CONFIG.uid, password);
+      await fetch(`${FIRESTORE_BASE_URL}/Usuarios/${CEO_CONFIG.uid}?updateMask.fieldPaths=password_hash&updateMask.fieldPaths=has_password&updateMask.fieldPaths=auth_provider`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            password_hash: { stringValue: passHash },
+            has_password: { booleanValue: true },
+            auth_provider: { stringValue: 'GOOGLE_AND_PASSWORD' }
+          }
+        })
+      });
+      const userProfile = await getOrSyncUser(CEO_CONFIG.uid);
+      return {
+        success: true,
+        fused: true,
+        token: `CEO_SESSION_${CEO_CONFIG.uid}_${Date.now()}`,
+        usuario: userProfile,
+        mensaje: '¡Contraseña asignada con éxito a la cuenta del Señor CEO Dramax!'
+      };
+    }
     return {
       success: false,
       code: 'CEO_EMAIL_RESERVED',
@@ -409,41 +495,109 @@ async function handleFirebaseAuthRegister(email, password, username) {
     };
   }
 
-  const url = `${FIREBASE_AUTH_BASE}:signUp?key=${FIREBASE_API_KEY}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, returnSecureToken: true })
-  });
+  // 1. Verificar si el usuario ya existe en Firestore (por ejemplo, creado previamente con Google)
+  const existingUser = await findUserByEmail(normalizedEmail);
 
-  const data = await response.json();
-  if (!response.ok) {
-    const errorMsg = data.error?.message || 'ERROR_REGISTER';
-    if (errorMsg.includes('EMAIL_EXISTS')) {
+  if (existingUser) {
+    const fields = existingUser.fields || {};
+    const hasPassword = fields.has_password?.booleanValue === true || (fields.password_hash && fields.password_hash.stringValue);
+
+    // Si ya tiene contraseña registrada, no permitir crear multicuenta
+    if (hasPassword) {
       return {
         success: false,
         code: 'EMAIL_EXISTS',
-        error: 'Este correo ya está registrado en la empresa. Inicie sesión directamente; las multicuentas están estrictamente prohibidas.'
+        error: 'Este correo ya está registrado con contraseña en la empresa. Inicie sesión directamente; las multicuentas están estrictamente prohibidas.'
       };
     }
-    if (errorMsg.includes('WEAK_PASSWORD')) {
-      return { success: false, code: 'WEAK_PASSWORD', error: 'La contraseña debe tener al menos 6 caracteres.' };
+
+    // SI FUE CREADO CON GOOGLE Y AHORA SE REGISTRA CON CORREO Y CONTRASEÑA:
+    // Render NO lo rechaza. Une la contraseña al UID existente manteniendo 100% de los recursos.
+    const passHash = hashUserPassword(existingUser.uid, password);
+    const patchFields = {
+      password_hash: { stringValue: passHash },
+      has_password: { booleanValue: true },
+      auth_provider: { stringValue: 'GOOGLE_AND_PASSWORD' }
+    };
+    if (username && username.trim().length > 0 && !fields.Username) {
+      patchFields.Username = { stringValue: username.trim() };
     }
-    if (errorMsg.includes('INVALID_EMAIL')) {
-      return { success: false, code: 'INVALID_EMAIL', error: 'El formato de correo electrónico es inválido.' };
-    }
-    return { success: false, code: errorMsg, error: 'No se pudo crear la cuenta: verifique los datos ingresados.' };
+
+    const mask = Object.keys(patchFields).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+    await fetch(`${FIRESTORE_BASE_URL}/Usuarios/${existingUser.uid}?${mask}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: patchFields })
+    });
+
+    const userProfile = await getOrSyncUser(existingUser.uid);
+    console.log(`[AUTH_REGISTER] FUSIÓN GOOGLE->PASSWORD: Correo ${normalizedEmail} vinculado bajo UID existente ${existingUser.uid} sin perder recursos.`);
+
+    return {
+      success: true,
+      fused: true,
+      token: `SESSION_${existingUser.uid}_${Date.now()}`,
+      usuario: userProfile,
+      mensaje: `¡Cuenta unificada con éxito! Tu cuenta creada previamente con Google ahora cuenta con contraseña vinculada bajo tu mismo UID (${existingUser.uid}) conservando todos tus recursos.`
+    };
   }
 
-  const uid = data.localId;
-  const safeUsername = username && username.trim().length > 0 ? username.trim() : email.split('@')[0];
-  const userProfile = await getOrSyncUser(uid, { correo: email, username: safeUsername });
+  // 2. Si no existe en Firestore, intentar registrar en Firebase Auth o crear nuevo usuario
+  let uid = null;
+  let idToken = null;
+
+  try {
+    const url = `${FIREBASE_AUTH_BASE}:signUp?key=${FIREBASE_API_KEY}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail, password, returnSecureToken: true })
+    });
+    const data = await response.json();
+    if (response.ok) {
+      uid = data.localId;
+      idToken = data.idToken;
+    } else {
+      const errorMsg = data.error?.message || 'ERROR_REGISTER';
+      if (errorMsg.includes('EMAIL_EXISTS')) {
+        uid = `minero_${crypto.randomBytes(8).toString('hex')}`;
+      } else if (errorMsg.includes('WEAK_PASSWORD')) {
+        return { success: false, code: 'WEAK_PASSWORD', error: 'La contraseña debe tener al menos 6 caracteres.' };
+      } else if (errorMsg.includes('INVALID_EMAIL')) {
+        return { success: false, code: 'INVALID_EMAIL', error: 'El formato de correo electrónico es inválido.' };
+      } else {
+        return { success: false, code: errorMsg, error: 'No se pudo crear la cuenta: verifique los datos ingresados.' };
+      }
+    }
+  } catch (err) {
+    uid = `minero_${crypto.randomBytes(8).toString('hex')}`;
+  }
+
+  const safeUsername = username && username.trim().length > 0 ? username.trim() : normalizedEmail.split('@')[0];
+  const passHash = hashUserPassword(uid, password);
+
+  // Auto-aprovisionar usuario completo en Firestore
+  const userProfile = await getOrSyncUser(uid, {
+    correo: normalizedEmail,
+    username: safeUsername
+  });
+
+  // Guardar hash de contraseña y bandera de contraseña en Firestore
+  await fetch(`${FIRESTORE_BASE_URL}/Usuarios/${uid}?updateMask.fieldPaths=password_hash&updateMask.fieldPaths=has_password&updateMask.fieldPaths=auth_provider`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fields: {
+        password_hash: { stringValue: passHash },
+        has_password: { booleanValue: true },
+        auth_provider: { stringValue: 'EMAIL_PASSWORD' }
+      }
+    })
+  });
 
   return {
     success: true,
-    token: data.idToken,
-    refreshToken: data.refreshToken,
-    expiresIn: data.expiresIn,
+    token: idToken || `SESSION_${uid}_${Date.now()}`,
     usuario: userProfile,
     mensaje: `¡Cuenta creada exitosamente! Bienvenido al equipo de exploración de Max Gold Black, ${safeUsername}.`
   };
@@ -520,6 +674,19 @@ async function handleGoogleAuth(idToken, email, displayName) {
     };
   }
 
+  // REGLA ESTRICTA DE CEO
+  if (targetEmail === CEO_CONFIG.correo.toLowerCase()) {
+    const ceoProfile = await getOrSyncUser(CEO_CONFIG.uid);
+    return {
+      success: true,
+      fused: true,
+      uid: CEO_CONFIG.uid,
+      usuario: ceoProfile,
+      token: `GOOGLE_CEO_SESSION_${Date.now()}`,
+      mensaje: '¡Bienvenido de nuevo, Señor CEO Dramax! Sesión corporativa autenticada con Google.'
+    };
+  }
+
   // REGLA ESTRICTA DE FUSIÓN: Buscar si ya existe una cuenta con este correo
   const existingUser = await findUserByEmail(targetEmail);
   let finalUid;
@@ -530,6 +697,12 @@ async function handleGoogleAuth(idToken, email, displayName) {
     finalUid = existingUser.uid;
     isFused = true;
     console.log(`[AUTH_GOOGLE] FUSIÓN ATÓMICA: Correo ${targetEmail} unificado bajo UID original existente ${finalUid}`);
+    // Asegurar que auth_google esté marcado en la base de datos
+    await fetch(`${FIRESTORE_BASE_URL}/Usuarios/${finalUid}?updateMask.fieldPaths=auth_google`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { auth_google: { booleanValue: true } } })
+    });
   } else {
     // Si no existe, crear nueva cuenta
     finalUid = targetUid || `google_${crypto.randomBytes(12).toString('hex')}`;
@@ -547,8 +720,8 @@ async function handleGoogleAuth(idToken, email, displayName) {
     usuario: userProfile,
     token: `GOOGLE_SESSION_${finalUid}_${Date.now()}`,
     mensaje: isFused
-      ? `¡Bienvenido de nuevo, ${userProfile.username}! Tu cuenta de Google fue fusionada automáticamente con tu progreso existente (mismo UID: ${finalUid}).`
-      : `¡Bienvenido a Max Gold Black, ${userProfile.username}! Tu cuenta de Google ha sido registrada.`
+      ? `¡Bienvenido de nuevo, ${userProfile.username}! Tu cuenta de Google fue fusionada automáticamente con tu progreso existente (mismo UID: ${finalUid}) sin perder ningún recurso.`
+      : `¡Bienvenido a Max Gold Black, ${userProfile.username}! Tu cuenta de Google ha sido registrada con éxito.`
   };
 }
 

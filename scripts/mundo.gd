@@ -97,6 +97,7 @@ const FOSSIL_SVG_PATHS: Array[String] = [
 @onready var lbl_val_fecha: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid/LblValFecha
 @onready var lbl_val_security: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/Grid/LblValSecurity
 @onready var lbl_boveda_personal: Label = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/LblBovedaPersonal
+@onready var btn_cerrar_sesion: Button = $HUD/TallerModal/Margin/VBox/UsuarioContainer/Margin/VBox/BtnCerrarSesion
 
 # Modal Comprador de Recursos (Precio dinámico fluctuante)
 @onready var comprador_modal: Control = $HUD/CompradorModal
@@ -172,6 +173,9 @@ func _setup_hud() -> void:
 
 	tab_taller.pressed.connect(func(): _set_modal_tab(0))
 	tab_usuario.pressed.connect(func(): _set_modal_tab(1))
+
+	if is_instance_valid(btn_cerrar_sesion):
+		btn_cerrar_sesion.pressed.connect(_on_btn_cerrar_sesion_pressed)
 
 	btn_deploy_t1.pressed.connect(func(): deploy_truck(1))
 	btn_deploy_t2.pressed.connect(func(): deploy_truck(2))
@@ -297,6 +301,21 @@ func _update_user_profile_card() -> void:
 		var cash_cnt = profile.get("billete", GestorJuego.cash)
 		var rec_cnt = profile.get("numero_de_recoleccion", 0)
 		lbl_boveda_personal.text = "🪙 Bóveda: %s Dragcoins • 💵 %s Max COP • ⛏️ Recolecciones: %s" % [_format_number(int(coins_cnt)), _format_number(int(cash_cnt)), str(rec_cnt)]
+
+func _on_btn_cerrar_sesion_pressed() -> void:
+	print("[Mundo] Salida voluntaria: Cerrando sesión del usuario.")
+	var firebase_mgr = get_node_or_null("FirebaseManager")
+	if firebase_mgr != null:
+		firebase_mgr.clear_session()
+	if is_instance_valid(taller_modal):
+		taller_modal.visible = false
+	if is_instance_valid(auth_modal):
+		auth_modal.visible = true
+		if auth_modal.has_method("mostrar_alerta_sesion"):
+			auth_modal.mostrar_alerta_sesion("Sesión finalizada. Ingrese con sus credenciales o Google para continuar.")
+	if is_instance_valid(camion_explorador):
+		camion_explorador.pause_exploration()
+		camion_explorador.visible = false
 
 func _on_taller_updated_from_firebase(_taller_dict: Dictionary) -> void:
 	_update_taller_cards()

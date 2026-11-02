@@ -147,8 +147,8 @@ func _check_session_heartbeat() -> void:
 			if not has_session:
 				has_session = true
 				session_state_changed.emit(true)
-		else:
-			print("[FirebaseManager] Sesión inválida o expirada detectada por Render Gateway.")
+		elif res.has("valida") and res["valida"] == false:
+			print("[FirebaseManager] Sesión explícitamente rechazada por Render Gateway.")
 			clear_session()
 	)
 
