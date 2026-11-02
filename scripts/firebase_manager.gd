@@ -24,6 +24,12 @@ const EncriptacionManager = preload("res://scripts/encriptacion_manager.gd")
 
 static var instance: Node = null
 
+## Retorna el nombre visible del usuario actual para diálogos y auditoría
+static func get_user_display_name() -> String:
+	if instance != null and not str(instance.current_username).is_empty():
+		return str(instance.current_username)
+	return "Minero"
+
 const RENDER_GATEWAY_URL: String = "https://max-gold-black-api.onrender.com"
 const SAVE_PATH_USER_ID: String = "user://firebase_user_id.dat"
 const SAVE_PATH_SESSION: String = "user://session_auth.json"
