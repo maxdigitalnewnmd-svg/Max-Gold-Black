@@ -2,32 +2,56 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Identificación soberana: Únicamente el Backend Autorizado de Render (Soberano CEO)
+    function isRenderBackend() {
+      return request.auth != null && (
+        request.auth.token.email == 'render-backend-authority@maxgoldblack.internal' ||
+        request.auth.uid == 'tgI2nzeTA8XFSbSTcwjVsOoM5SR2'
+      );
+    }
+
+    // Identificación del CEO Fundador
+    function isCEO() {
+      return request.auth != null && (
+        request.auth.uid == 'QEMLQtpeFYgfXmZL8eXQSzlMypg2' ||
+        request.auth.token.email == 'maxdigitalnewnmd@gmail.com'
+      );
+    }
+
     // Colección Gestor: Precios oficiales y Bóveda de liquidez
+    // Lectura pública para consulta de cotizaciones oficiales.
+    // Escritura 100% blindada: SOLO Render Backend puede alterar la boveda o precios.
     match /Gestor/{docId} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isRenderBackend() || isCEO();
     }
 
-    // Colección Taller: Flota de camionetas autorizadas
+    // Colección Taller: Flota autorizada de camionetas y costos oficiales
+    // Lectura pública para visualización en el concesionario.
+    // Escritura 100% blindada: Nadie excepto el Backend de Render puede modificar la flota.
     match /Taller/{docId} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isRenderBackend() || isCEO();
     }
 
-    // Colección Usuarios: Perfil corporativo, identidad del CEO e inmutabilidad
+    // Colección Usuarios: Perfiles, saldos de minerales, monedas, billetes y códigos encriptados
+    // Lectura pública de perfiles autorizada para sincronización visual.
+    // Escritura TOTALMENTE PROHIBIDA a clientes directos, atacantes o scripts externos.
+    // Solo el Backend Soberano de Render procesa y escribe cambios atómicos verificados.
     match /Usuarios/{uid} {
       allow read: if true;
-      allow write: if true;
+      allow write: if isRenderBackend() || isCEO();
     }
 
-    // Colección jugadores (compatibilidad)
+    // Colección histórica jugadores (compatibilidad)
     match /jugadores/{playerId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isRenderBackend() || isCEO();
     }
 
-    // Cualquier otra ruta queda denegada
+    // Cualquier otra ruta o colección queda completamente denegada
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if isRenderBackend() || isCEO();
     }
   }
 }

@@ -21,8 +21,77 @@ const CEO_CONFIG = {
   username: 'Dramax',
   correo: 'maxdigitalnewnmd@gmail.com',
   tipo: 'CEO',
-  fecha_creacion: '2026-11-01 15:37:24 (Cuenta Fundacional CEO)'
+  fecha_creacion: '2026-11-01 15:37:24 (Cuenta Fundacional CEO)',
+  sovereign_key: 'TatacoaDesertMasterKey2026'
 };
+
+// --- AUTENTICACIÓN SOBERANA DE RENDER ANTE FIRESTORE (SEGURIDAD TOTAL CONTRA HACKERS) ---
+const BACKEND_SERVICE_CONFIG = {
+  email: process.env.RENDER_SERVICE_EMAIL || 'render-backend-authority@maxgoldblack.internal',
+  password: process.env.RENDER_SERVICE_PASSWORD || 'TatacoaDesertRenderSecret2026!Key',
+  token: null,
+  tokenExpiresAt: 0,
+  refreshToken: null
+};
+
+const nativeFetch = globalThis.fetch;
+
+async function getBackendServiceToken(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && BACKEND_SERVICE_CONFIG.token && now < BACKEND_SERVICE_CONFIG.tokenExpiresAt - 60000) {
+    return BACKEND_SERVICE_CONFIG.token;
+  }
+
+  try {
+    const res = await nativeFetch(`${FIREBASE_AUTH_BASE}:signInWithPassword?key=${FIREBASE_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: BACKEND_SERVICE_CONFIG.email,
+        password: BACKEND_SERVICE_CONFIG.password,
+        returnSecureToken: true
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.idToken) {
+      BACKEND_SERVICE_CONFIG.token = data.idToken;
+      BACKEND_SERVICE_CONFIG.refreshToken = data.refreshToken;
+      const expiresInSec = parseInt(data.expiresIn || '3600', 10);
+      BACKEND_SERVICE_CONFIG.tokenExpiresAt = now + (expiresInSec * 1000);
+      return BACKEND_SERVICE_CONFIG.token;
+    } else {
+      console.error('[SOVEREIGN AUTH] Error al obtener token de servicio:', data);
+    }
+  } catch (err) {
+    console.error('[SOVEREIGN AUTH] Excepción al autenticar Render Backend:', err);
+  }
+  return BACKEND_SERVICE_CONFIG.token;
+}
+
+async function sovereignFetch(url, options = {}) {
+  const isFirestore = typeof url === 'string' && (url.includes('firestore.googleapis.com') || url.includes('/databases/(default)/documents'));
+  if (isFirestore) {
+    const token = await getBackendServiceToken();
+    const headers = Object.assign({}, options.headers || {});
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    let res = await nativeFetch(url, Object.assign({}, options, { headers }));
+    if (res.status === 401 || res.status === 403) {
+      console.warn(`[SOVEREIGN AUTH] Token de Render rechazado (${res.status}). Renovando...`);
+      const newToken = await getBackendServiceToken(true);
+      if (newToken) {
+        headers['Authorization'] = `Bearer ${newToken}`;
+        res = await nativeFetch(url, Object.assign({}, options, { headers }));
+      }
+    }
+    return res;
+  }
+  return nativeFetch(url, options);
+}
+
+// Interceptor global activo: todas las llamadas de server.js a Firestore quedan blindadas y autorizadas
+globalThis.fetch = sovereignFetch;
 
 // Historial temporal de jugadores para prevención de Speedhacks y validación temporal
 const lastExplorationTimes = new Map(); // uid -> timestamp
