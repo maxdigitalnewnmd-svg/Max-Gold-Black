@@ -421,8 +421,16 @@ func deploy_truck(new_tier: int) -> void:
 		camion_explorador.set_truck_tier(new_tier)
 
 func _on_truck_tier_changed(new_tier: int, tier_name: String) -> void:
+	var truck_title = tier_name
+	var firebase_mgr = get_node_or_null("FirebaseManager")
+	if firebase_mgr != null and firebase_mgr.has_method("get_taller_info"):
+		var t_info = firebase_mgr.get_taller_info(new_tier)
+		var ftit = str(t_info.get("titulo", ""))
+		if not ftit.is_empty():
+			truck_title = ftit
+
 	if is_instance_valid(lbl_active_truck):
-		lbl_active_truck.text = "CAMIÓN: %s" % tier_name
+		lbl_active_truck.text = "CAMIÓN: %s" % truck_title
 	_update_taller_cards()
 
 func _update_taller_cards() -> void:
@@ -460,20 +468,27 @@ func _update_taller_cards() -> void:
 					btn.disabled = false
 					btn.modulate = Color(0.2, 0.95, 0.45, 1.0)
 
-		# Actualizar campos dinámicos de Firestore en tiempo real
+		# Mostrar exactamente los datos oficiales de Firestore (Título, Costo y Especificaciones)
 		var card_path = "HUD/TallerModal/Margin/VBox/CardT%d/Margin/HBox/Info" % tier
 		var info_node = get_node_or_null(card_path)
 		if info_node != null and not t_info.is_empty():
 			var name_lbl = info_node.get_node_or_null("Name")
 			var specs_lbl = info_node.get_node_or_null("Specs")
 			if name_lbl != null:
-				name_lbl.text = "%s (T%d)" % [t_info.get("titulo", "Camioneta"), tier]
+				name_lbl.text = str(t_info.get("titulo", ""))
 			if specs_lbl != null:
-				var comb = t_info.get("combustible", 15)
-				var rep = t_info.get("reparacion", 10)
-				var cost_str = " • Costo: $%d Billetes" % costo if costo > 0 else " • Gratuita"
-				var status_str = " • [Adquirida]" if is_acquired else " • [No Adquirida]"
-				specs_lbl.text = "Combustible: %d / km • Reparación: $%d%s%s" % [comb, rep, cost_str, status_str]
+				var cost_str = "Costo: $%d Billetes" % costo
+				var status_str = " • [Adquirido]" if is_acquired else " • [No Adquirido]"
+				var desc = str(t_info.get("descripcion", "")).strip_edges()
+				if not desc.is_empty():
+					specs_lbl.text = "%s • %s%s" % [cost_str, desc, status_str]
+				else:
+					var comb = int(t_info.get("combustible", 0))
+					var rep = int(t_info.get("reparacion", 0))
+					if comb > 0 or rep > 0:
+						specs_lbl.text = "%s • Combustible: %d / km • Reparación: $%d%s" % [cost_str, comb, rep, status_str]
+					else:
+						specs_lbl.text = "%s%s" % [cost_str, status_str]
 
 func _update_inventory_display() -> void:
 	if is_instance_valid(lbl_coins):

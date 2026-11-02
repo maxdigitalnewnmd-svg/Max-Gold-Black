@@ -65,12 +65,12 @@ var boveda_liquidez: Dictionary = {
 	"EMERALD": 1000000
 }
 
-# Camionetas sincronizadas desde el Taller
+# Camionetas sincronizadas dinámicamente desde la colección Taller de Firestore
 var taller_data: Dictionary = {
-	1: { "doc_id": "Camioneta Basica", "titulo": "Camioneta Basica", "costo": 0, "combustible": 15, "reparacion": 10, "descripcion": "" },
-	2: { "doc_id": "Camioneta normal", "titulo": "Camioneta normal", "costo": 50, "combustible": 20, "reparacion": 15, "descripcion": "" },
-	3: { "doc_id": "Camioneta Media", "titulo": "Camioneta Media", "costo": 120, "combustible": 28, "reparacion": 25, "descripcion": "" },
-	4: { "doc_id": "Camioneta Alta", "titulo": "Camioneta Alta", "costo": 300, "combustible": 40, "reparacion": 45, "descripcion": "" }
+	1: { "doc_id": "Camioneta Basica", "titulo": "Camion sonico", "costo": 50, "combustible": 15, "reparacion": 10, "descripcion": "" },
+	2: { "doc_id": "Camioneta normal", "titulo": "Camion super sonico", "costo": 200, "combustible": 0, "reparacion": 0, "descripcion": "" },
+	3: { "doc_id": "Camioneta Media", "titulo": "Camion max sonico", "costo": 100, "combustible": 0, "reparacion": 0, "descripcion": "" },
+	4: { "doc_id": "Camioneta Alta", "titulo": "Camion Ultra sonico", "costo": 500, "combustible": 0, "reparacion": 0, "descripcion": "" }
 }
 
 var market_poll_timer: Timer
