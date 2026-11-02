@@ -105,9 +105,9 @@ func _on_btn_do_login_pressed() -> void:
 		return
 
 	var email = txt_login_email.text.strip_edges()
-	var pass = txt_login_pass.text
+	var pwd = txt_login_pass.text
 
-	if email.is_empty() or pass.is_empty():
+	if email.is_empty() or pwd.is_empty():
 		_show_error(lbl_status_login, "Por favor ingrese su correo y contraseña.")
 		return
 
@@ -117,7 +117,7 @@ func _on_btn_do_login_pressed() -> void:
 	lbl_status_login.text = ""
 
 	if FirebaseManager.instance != null:
-		FirebaseManager.instance.iniciar_sesion_render(email, pass, func(res: Dictionary):
+		FirebaseManager.instance.iniciar_sesion_render(email, pwd, func(res: Dictionary):
 			is_processing = false
 			btn_do_login.disabled = false
 			btn_do_login.text = "▶ INICIAR"
@@ -139,18 +139,18 @@ func _on_btn_do_register_pressed() -> void:
 
 	var username = txt_reg_user.text.strip_edges()
 	var email = txt_reg_email.text.strip_edges()
-	var pass = txt_reg_pass.text
+	var pwd = txt_reg_pass.text
 	var confirm = txt_reg_confirm.text
 
-	if email.is_empty() or pass.is_empty() or confirm.is_empty():
+	if email.is_empty() or pwd.is_empty() or confirm.is_empty():
 		_show_error(lbl_status_register, "Todos los campos marcados son obligatorios.")
 		return
 
-	if pass.length() < 6:
+	if pwd.length() < 6:
 		_show_error(lbl_status_register, "La contraseña debe tener al menos 6 caracteres.")
 		return
 
-	if pass != confirm:
+	if pwd != confirm:
 		_show_error(lbl_status_register, "Las contraseñas no coinciden.")
 		return
 
@@ -160,7 +160,7 @@ func _on_btn_do_register_pressed() -> void:
 	lbl_status_register.text = ""
 
 	if FirebaseManager.instance != null:
-		FirebaseManager.instance.registrarse_render(email, pass, confirm, username, func(res: Dictionary):
+		FirebaseManager.instance.registrarse_render(email, pwd, confirm, username, func(res: Dictionary):
 			is_processing = false
 			btn_do_register.disabled = false
 			btn_do_register.text = "✨ REGISTRARSE"

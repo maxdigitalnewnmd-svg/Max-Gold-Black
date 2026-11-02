@@ -153,11 +153,11 @@ func _check_session_heartbeat() -> void:
 			clear_session()
 	)
 
-func iniciar_sesion_render(email: String, pass: String, callback: Callable) -> void:
+func iniciar_sesion_render(email: String, password_input: String, callback: Callable) -> void:
 	var payload = {
 		"action": "AUTH_LOGIN",
 		"email": email,
-		"password": pass
+		"password": password_input
 	}
 	post_encrypted_gateway(payload, func(res: Dictionary):
 		if res.get("success", false) and res.has("usuario"):
@@ -178,11 +178,11 @@ func iniciar_sesion_render(email: String, pass: String, callback: Callable) -> v
 		callback.call(res)
 	)
 
-func registrarse_render(email: String, pass: String, confirm_pass: String, username: String, callback: Callable) -> void:
+func registrarse_render(email: String, password_input: String, confirm_pass: String, username: String, callback: Callable) -> void:
 	var payload = {
 		"action": "AUTH_REGISTER",
 		"email": email,
-		"password": pass,
+		"password": password_input,
 		"confirm_password": confirm_pass,
 		"username": username
 	}
