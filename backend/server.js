@@ -699,6 +699,244 @@ app.post('/api/vault/validate-and-seal-cycle', async (req, res) => {
   }
 });
 
+
+// =========================================================================
+// SENTINEL WEBHOOK GUARDIAN: MAXSOFT SOVEREIGN SUPERVISOR
+// "El software ya no hace cosas solo: esta vigilado por Render paso a paso"
+// =========================================================================
+
+// 1. Webhook Time
+app.get('/api/webhook/time', (req, res) => {
+  const now = new Date();
+  res.json({
+    status: 'ok',
+    server_time_iso: now.toISOString(),
+    server_time_ms: now.getTime()
+  });
+});
+
+// 2. Webhook Validate CEO Authority
+app.post('/api/webhook/validate', async (req, res) => {
+  try {
+    const { ceoId, email } = req.body || {};
+    if (ceoId !== "GFLFPx5yKHXiD6kUYFpq9EjnOfU2" || email !== "maxdigitalnewnmd@gmail.com") {
+      return res.status(403).json({ error: "UNAUTHORIZED_SOFTWARE", message: "Credenciales de software o identidad del CEO no autorizadas." });
+    }
+    const fResp = await fetch(FIRESTORE_CEO_URL);
+    if (!fResp.ok) return res.status(500).json({ error: "FIRESTORE_CEO_UNREACHABLE" });
+    const ceoDoc = await fResp.json();
+    const data = parseFirestoreDoc(ceoDoc.fields);
+    if (data.Correo === "maxdigitalnewnmd@gmail.com" && data.Cuenta === "Ceo") {
+      return res.json({
+        authorized: true,
+        guard_status: "SUPERVISED_BY_RENDER_WEBHOOK",
+        role: "CEO_SOVEREIGN_AUTHORITY",
+        server_timestamp: new Date().toISOString()
+      });
+    }
+    return res.status(403).json({ error: "CEO_VERIFICATION_FAILED" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 3. Webhook Status & Orders
+app.get('/api/webhook/status', async (req, res) => {
+  try {
+    const fResp = await fetch(FIRESTORE_VAULT_URL);
+    if (!fResp.ok) return res.status(500).json({ error: "FIRESTORE_VAULT_UNREACHABLE" });
+    const doc = await fResp.json();
+    const data = parseFirestoreDoc(doc.fields);
+    
+    let cap = 100000000;
+    if (data.Capacidad) {
+      cap = typeof data.Capacidad === 'number' ? data.Capacidad : (parseInt(String(data.Capacidad).replace(/[^0-9]/g, ''), 10) || 100000000);
+    }
+    let tension = 60;
+    if (data.tension_baja) {
+      const match = String(data.tension_baja).match(/[0-9]+/);
+      if (match) tension = parseInt(match[0], 10);
+    }
+    const totalCoins = data.totalCoins || 0;
+    const umbralReactivacion = Math.floor(cap * (tension / 100));
+    const isCapacityLocked = totalCoins >= cap;
+
+    res.json({
+      status: 'supervised',
+      totalCoins: totalCoins,
+      ciclo: data.ciclo || 1,
+      capacidad: cap,
+      tension_baja_pct: tension,
+      umbral_reactivacion: umbralReactivacion,
+      isCapacityLocked: isCapacityLocked,
+      cadenaTokensAcumulada: data.cadenaTokensAcumulada || "",
+      server_time: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 4. Webhook Watchdog Heartbeat: Render supervisa cada paso en vivo
+app.post('/api/webhook/watchdog-heartbeat', async (req, res) => {
+  try {
+    const { ciclo, etapa, activeSeconds, coinsForged, blockCount } = req.body || {};
+    
+    // Consulta dinámica a Firestore
+    const fResp = await fetch(FIRESTORE_VAULT_URL);
+    if (!fResp.ok) return res.status(500).json({ error: "FIRESTORE_UNREACHABLE" });
+    const doc = await fResp.json();
+    const data = parseFirestoreDoc(doc.fields);
+
+    let cap = 100000000;
+    if (data.Capacidad) {
+      cap = typeof data.Capacidad === 'number' ? data.Capacidad : (parseInt(String(data.Capacidad).replace(/[^0-9]/g, ''), 10) || 100000000);
+    }
+    let tension = 60;
+    if (data.tension_baja) {
+      const match = String(data.tension_baja).match(/[0-9]+/);
+      if (match) tension = parseInt(match[0], 10);
+    }
+    const totalCoins = data.totalCoins || 0;
+    const umbral = Math.floor(cap * (tension / 100));
+
+    // Si la capacidad máxima fue alcanzada: Render ordena PAUSA obligatoria
+    if (totalCoins >= cap) {
+      return res.json({
+        status: "supervised",
+        command: "PAUSE_CAPACITY_LIMIT",
+        message: `Bóveda al tope (${cap.toLocaleString()} MXC). Producción suspendida por Render hasta tensión baja (<= ${tension}%).`,
+        capacidad: cap,
+        tension_baja_pct: tension,
+        umbral_reactivacion: umbral
+      });
+    }
+
+    // Si estaba pausado pero ya descendió al umbral: Render ordena REANUDAR
+    return res.json({
+      status: "supervised",
+      command: "CONTINUE_SUPERVISED",
+      activeStage: etapa,
+      coinsForged: coinsForged,
+      serverTime: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 5. Webhook Cycle Seal: Solo se autoriza si ALMACENAMIENTO guardó el archivo y todas las firmas coinciden
+app.post('/api/webhook/cycle-seal', async (req, res) => {
+  try {
+    const {
+      ciclo,
+      targetBatch,
+      fase1_firma,
+      fase2_firma,
+      fase3_firma,
+      masterFirmaTripartita,
+      ledgerFileName,
+      ledgerSavedConfirmed,
+      totalBlocks,
+      ceoId
+    } = req.body || {};
+
+    // Vigilancia 1: El archivo en ALMACENAMIENTO debe estar descargado y confirmado
+    if (!ledgerSavedConfirmed || !ledgerFileName) {
+      return res.status(403).json({
+        authorized: false,
+        command: "HALT_CYCLE",
+        error: "STORAGE_SAVE_REQUIRED",
+        message: "Render rechaza autorizar el nuevo ciclo: El archivo MAXCOIN_LEDGER debe ser descargado y guardado en ALMACENAMIENTO antes de iniciar."
+      });
+    }
+
+    // Vigilancia 2: Autoridad CEO
+    if (ceoId !== "GFLFPx5yKHXiD6kUYFpq9EjnOfU2") {
+      return res.status(403).json({
+        authorized: false,
+        command: "HALT_CYCLE",
+        error: "INVALID_CEO_AUTHORITY",
+        message: "Render rechaza autorizar: Credencial de autoridad CEO inválida."
+      });
+    }
+
+    // Vigilancia 3: Tokens de las 3 fases y Firma Tripartita Master
+    if (!fase1_firma || !fase2_firma || !fase3_firma || !masterFirmaTripartita) {
+      return res.status(400).json({
+        authorized: false,
+        command: "HALT_CYCLE",
+        error: "INCOMPLETE_STAGE_TOKENS",
+        message: "Render rechaza autorizar: Faltan firmas individuales de etapa o firma tripartita master."
+      });
+    }
+
+    // Vigilancia 4: Comprobación estricta de Capacidad en Firestore
+    const fResp = await fetch(FIRESTORE_VAULT_URL);
+    if (!fResp.ok) return res.status(500).json({ error: "FIRESTORE_READ_ERROR" });
+    const currentDoc = await fResp.json();
+    const currentData = parseFirestoreDoc(currentDoc.fields);
+
+    let cap = 100000000;
+    if (currentData.Capacidad) {
+      cap = typeof currentData.Capacidad === 'number' ? currentData.Capacidad : (parseInt(String(currentData.Capacidad).replace(/[^0-9]/g, ''), 10) || 100000000);
+    }
+    const currentCoins = currentData.totalCoins || 0;
+    const addedCoins = targetBatch || 100000;
+    const newTotalCoins = currentCoins + addedCoins;
+
+    if (newTotalCoins > cap) {
+      return res.status(409).json({
+        authorized: false,
+        command: "HALT_CYCLE",
+        error: "CAPACITY_EXCEEDED",
+        message: `La bóveda ha alcanzado su capacidad máxima (${cap.toLocaleString()} MXC). El nuevo ciclo queda bloqueado hasta tensión baja.`
+      });
+    }
+
+    // Sellado oficial atómico en Firestore ejecutado por el Webhook de Render
+    const nuevoCiclo = (currentData.ciclo || ciclo || 1) + 1;
+    const nuevaCadena = (currentData.cadenaTokensAcumulada || "") + `::C${ciclo}_${masterFirmaTripartita}`;
+
+    const updatePatchUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=ciclo&updateMask.fieldPaths=cadenaTokensAcumulada&updateMask.fieldPaths=lastCycleLedgerFile&updateMask.fieldPaths=lastCycleLedgerHash&updateMask.fieldPaths=lastServerSync`;
+
+    const patchBody = {
+      fields: {
+        totalCoins: { integerValue: String(newTotalCoins) },
+        ciclo: { integerValue: String(nuevoCiclo) },
+        cadenaTokensAcumulada: { stringValue: nuevaCadena },
+        lastCycleLedgerFile: { stringValue: ledgerFileName },
+        lastCycleLedgerHash: { stringValue: masterFirmaTripartita },
+        lastServerSync: { timestampValue: new Date().toISOString() }
+      }
+    };
+
+    const patchResp = await fetch(updatePatchUrl, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patchBody)
+    });
+
+    if (!patchResp.ok) {
+      const pErr = await patchResp.text();
+      return res.status(500).json({ error: "FIRESTORE_UPDATE_FAILED", details: pErr });
+    }
+
+    return res.json({
+      authorized: true,
+      command: "AUTHORIZE_NEXT_CYCLE",
+      certifiedBy: "RENDER_SENTINEL_WEBHOOK_v2",
+      totalCoins: newTotalCoins,
+      nuevoCiclo: nuevoCiclo,
+      lastCycleLedgerFile: ledgerFileName,
+      lastCycleLedgerHash: masterFirmaTripartita,
+      certificationTimestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 [MAXTRAIDE AI CLOUD]: Gateway Soberano activo en puerto ${PORT}`);
 });
