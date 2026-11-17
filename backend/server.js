@@ -979,7 +979,9 @@ app.post('/api/webhook/audit-and-resume', async (req, res) => {
     const currentCoins = data.totalCoins || 0;
 
     // Evaluacion de ciclos completados en ALMACENAMIENTO:
-    // "si hay varios y cumplen con la condicion de render se quedan si no se eliminan"
+    // "Si un JSON esta almacenado en ALMACENAMIENTO es porque ya se guardo manualmente y cumplio el ciclo al 100%"
+    // Render valida que sea 100% legitimo (400 bloques, 100,000 monedas, firma tripartita valida).
+    // Si cumple: Es INMUTABLE, no se borra bajo ninguna circunstancia.
     const certifiedCycles = [];
     const invalidCycles = [];
     if (Array.isArray(storedCyclesSummary)) {
