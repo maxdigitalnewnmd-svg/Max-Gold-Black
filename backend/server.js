@@ -937,6 +937,80 @@ app.post('/api/webhook/cycle-seal', async (req, res) => {
   }
 });
 
+
+// 6. Webhook Audit and Resume: Render evalua el progreso en curso al abrir o antes de guardar
+app.post('/api/webhook/audit-and-resume', async (req, res) => {
+  try {
+    const { ciclo, activeSeconds, coinsForged, storedCyclesSummary } = req.body || {};
+
+    const fResp = await fetch(FIRESTORE_VAULT_URL);
+    if (!fResp.ok) return res.status(500).json({ error: "FIRESTORE_UNREACHABLE" });
+    const doc = await fResp.json();
+    const data = parseFirestoreDoc(doc.fields);
+
+    let cap = 100000000;
+    if (data.Capacidad) {
+      cap = typeof data.Capacidad === 'number' ? data.Capacidad : (parseInt(String(data.Capacidad).replace(/[^0-9]/g, ''), 10) || 100000000);
+    }
+    const currentCoins = data.totalCoins || 0;
+
+    // Evaluacion de ciclos completados en ALMACENAMIENTO:
+    // "si hay varios y cumplen con la condicion de render se quedan si no se eliminan"
+    const certifiedCycles = [];
+    const invalidCycles = [];
+    if (Array.isArray(storedCyclesSummary)) {
+      storedCyclesSummary.forEach(c => {
+        const validFormat = c.ciclo > 0 && c.totalBlocks === 400 && c.totalCoins === 100000 && c.masterHash && c.masterHash.length >= 16;
+        if (validFormat) {
+          certifiedCycles.push(c.ciclo);
+        } else {
+          invalidCycles.push(c.ciclo);
+        }
+      });
+    }
+
+    if (currentCoins >= cap) {
+      return res.json({
+        authorized: true,
+        action: "PAUSE_CAPACITY_LIMIT",
+        message: `Boveda al tope (${cap.toLocaleString()} MXC). Esperando tension baja.`,
+        certifiedCycles,
+        invalidCycles
+      });
+    }
+
+    // Evaluacion del ciclo en curso:
+    // "al momento de guardar evaluara y si no hay coincidencias reiniciara para que empiece desde 0 el ciclo"
+    const maxSec = 5400;
+    const maxCoins = 100000;
+    const isCorrupted = (activeSeconds !== undefined && (activeSeconds < 0 || activeSeconds > maxSec + 120)) ||
+                        (coinsForged !== undefined && (coinsForged < 0 || coinsForged > maxCoins));
+
+    if (isCorrupted) {
+      return res.json({
+        authorized: true,
+        action: "RESET_CYCLE_TO_ZERO",
+        message: "Render detecto discrepancia en datos del ciclo en curso. Reiniciando ciclo a 0 para garantizar pureza.",
+        certifiedCycles,
+        invalidCycles
+      });
+    }
+
+    return res.json({
+      authorized: true,
+      action: "RESUME_IN_PROGRESS",
+      message: `Render audito el progreso en curso (${activeSeconds || 0}s / ${coinsForged || 0} monedas). Permiso concedido para seguir avanzando.`,
+      activeSeconds: activeSeconds || 0,
+      coinsForged: coinsForged || 0,
+      certifiedCycles,
+      invalidCycles,
+      serverTime: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 [MAXTRAIDE AI CLOUD]: Gateway Soberano activo en puerto ${PORT}`);
 });
