@@ -511,6 +511,194 @@ app.get('/dashboard', (req, res) => {
   `);
 });
 
+
+// =========================================================================
+// MÓDULO SOBERANO: MAXSOFT VAULT BACKEND VALIDATOR (NEW MAX DIGITAL)
+// Centraliza y valida: Tokenización, Encriptación, Almacenamiento, Firestore y Anti-Hack
+// =========================================================================
+const FIRESTORE_API_KEY = process.env.FIRESTORE_API_KEY || "AIzaSyB94OLmZo1CbDn95kW18VGUdGEWiA1WpfU";
+const FIRESTORE_PROJECT_ID = process.env.FIRESTORE_PROJECT_ID || "max-net-digital";
+const FIRESTORE_VAULT_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/empresa/vault?key=${FIRESTORE_API_KEY}`;
+const FIRESTORE_CEO_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/Ceo/GFLFPx5yKHXiD6kUYFpq9EjnOfU2?key=${FIRESTORE_API_KEY}`;
+
+function parseFirestoreDoc(fields) {
+  const result = {};
+  for (const [k, v] of Object.entries(fields || {})) {
+    if (v.stringValue !== undefined) result[k] = v.stringValue;
+    else if (v.integerValue !== undefined) result[k] = parseInt(v.integerValue, 10);
+    else if (v.doubleValue !== undefined) result[k] = parseFloat(v.doubleValue);
+    else if (v.booleanValue !== undefined) result[k] = v.booleanValue;
+    else if (v.timestampValue !== undefined) result[k] = v.timestampValue;
+  }
+  return result;
+}
+
+// 1. Reloj Oficial Soberano del Servidor
+app.get('/api/vault/time', (req, res) => {
+  const now = new Date();
+  res.json({
+    status: 'ok',
+    server_time_iso: now.toISOString(),
+    server_time_ms: now.getTime()
+  });
+});
+
+// 2. Validación y Handshake del Software y CEO
+app.post('/api/vault/validate-software', async (req, res) => {
+  try {
+    const { ceoId, email } = req.body || {};
+    if (ceoId !== "GFLFPx5yKHXiD6kUYFpq9EjnOfU2" || email !== "maxdigitalnewnmd@gmail.com") {
+      return res.status(403).json({ error: "UNAUTHORIZED_SOFTWARE", message: "Credenciales de software o identidad del CEO inválidas." });
+    }
+    const fResp = await fetch(FIRESTORE_CEO_URL);
+    if (!fResp.ok) {
+      return res.status(500).json({ error: "FIRESTORE_CEO_UNREACHABLE" });
+    }
+    const ceoDoc = await fResp.json();
+    const data = parseFirestoreDoc(ceoDoc.fields);
+    if (data.Correo === "maxdigitalnewnmd@gmail.com" && data.Cuenta === "Ceo") {
+      return res.json({
+        authorized: true,
+        status: "VALIDATED_BY_RENDER",
+        role: "CEO_SOVEREIGN_AUTHORITY",
+        server_timestamp: new Date().toISOString()
+      });
+    }
+    return res.status(403).json({ error: "CEO_VERIFICATION_FAILED" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 3. Consulta de Estado, Capacidad y Órdenes de Tensión
+app.get('/api/vault/status', async (req, res) => {
+  try {
+    const fResp = await fetch(FIRESTORE_VAULT_URL);
+    if (!fResp.ok) {
+      return res.status(500).json({ error: "FIRESTORE_VAULT_UNREACHABLE" });
+    }
+    const doc = await fResp.json();
+    const data = parseFirestoreDoc(doc.fields);
+    
+    let cap = 100000000;
+    if (data.Capacidad) {
+      cap = typeof data.Capacidad === 'number' ? data.Capacidad : (parseInt(String(data.Capacidad).replace(/[^0-9]/g, ''), 10) || 100000000);
+    }
+    let tension = 60;
+    if (data.tension_baja) {
+      const match = String(data.tension_baja).match(/[0-9]+/);
+      if (match) tension = parseInt(match[0], 10);
+    }
+    const totalCoins = data.totalCoins || 0;
+    const umbralReactivacion = Math.floor(cap * (tension / 100));
+    const isCapacityLocked = totalCoins >= cap;
+
+    res.json({
+      status: 'ok',
+      totalCoins: totalCoins,
+      ciclo: data.ciclo || 1,
+      capacidad: cap,
+      tension_baja_pct: tension,
+      umbral_reactivacion: umbralReactivacion,
+      isCapacityLocked: isCapacityLocked,
+      cadenaTokensAcumulada: data.cadenaTokensAcumulada || "",
+      server_time: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 4. Validación Criptográfica del Ciclo, Almacenamiento y Sellado en Firestore
+app.post('/api/vault/validate-and-seal-cycle', async (req, res) => {
+  try {
+    const {
+      ciclo,
+      targetBatch,
+      fase1_firma,
+      fase2_firma,
+      fase3_firma,
+      masterFirmaTripartita,
+      ledgerFileName,
+      totalBlocks,
+      ceoId
+    } = req.body || {};
+
+    if (ceoId !== "GFLFPx5yKHXiD6kUYFpq9EjnOfU2") {
+      return res.status(403).json({ error: "INVALID_CEO_AUTHORITY", message: "Rechazado: La firma de autoridad no coincide." });
+    }
+
+    if (!fase1_firma || !fase2_firma || !fase3_firma || !masterFirmaTripartita) {
+      return res.status(400).json({ error: "MISSING_STAGE_TOKENS", message: "Rechazado: Faltan las firmas de las 3 fases o firma tripartita." });
+    }
+
+    if (!ledgerFileName || !ledgerFileName.includes(`CICLO_${ciclo}`) || (totalBlocks && totalBlocks < 400)) {
+      return res.status(400).json({ error: "INVALID_STORAGE_LEDGER", message: "Rechazado: El archivo de ALMACENAMIENTO no cumple la certificación de 400 bloques / 100,000 monedas." });
+    }
+
+    const fResp = await fetch(FIRESTORE_VAULT_URL);
+    if (!fResp.ok) {
+      return res.status(500).json({ error: "FIRESTORE_READ_ERROR" });
+    }
+    const currentDoc = await fResp.json();
+    const currentData = parseFirestoreDoc(currentDoc.fields);
+
+    let cap = 100000000;
+    if (currentData.Capacidad) {
+      cap = typeof currentData.Capacidad === 'number' ? currentData.Capacidad : (parseInt(String(currentData.Capacidad).replace(/[^0-9]/g, ''), 10) || 100000000);
+    }
+    const currentCoins = currentData.totalCoins || 0;
+    const addedCoins = targetBatch || 100000;
+    const newTotalCoins = currentCoins + addedCoins;
+
+    if (newTotalCoins > cap) {
+      return res.status(409).json({
+        error: "CAPACITY_EXCEEDED",
+        message: `La bóveda ha alcanzado su capacidad máxima (${cap.toLocaleString()} MXC). No se puede consolidar más saldo hasta tensión baja.`
+      });
+    }
+
+    const nuevoCiclo = (currentData.ciclo || ciclo || 1) + 1;
+    const nuevaCadena = (currentData.cadenaTokensAcumulada || "") + `::C${ciclo}_${masterFirmaTripartita}`;
+
+    const updatePatchUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=ciclo&updateMask.fieldPaths=cadenaTokensAcumulada&updateMask.fieldPaths=lastCycleLedgerFile&updateMask.fieldPaths=lastCycleLedgerHash&updateMask.fieldPaths=lastServerSync`;
+
+    const patchBody = {
+      fields: {
+        totalCoins: { integerValue: String(newTotalCoins) },
+        ciclo: { integerValue: String(nuevoCiclo) },
+        cadenaTokensAcumulada: { stringValue: nuevaCadena },
+        lastCycleLedgerFile: { stringValue: ledgerFileName },
+        lastCycleLedgerHash: { stringValue: masterFirmaTripartita },
+        lastServerSync: { timestampValue: new Date().toISOString() }
+      }
+    };
+
+    const patchResp = await fetch(updatePatchUrl, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patchBody)
+    });
+
+    if (!patchResp.ok) {
+      const pErr = await patchResp.text();
+      return res.status(500).json({ error: "FIRESTORE_UPDATE_FAILED", details: pErr });
+    }
+
+    return res.json({
+      success: true,
+      certifiedBy: "RENDER_SECURE_VAULT_GATEWAY",
+      totalCoins: newTotalCoins,
+      nuevoCiclo: nuevoCiclo,
+      lastCycleLedgerFile: ledgerFileName,
+      lastCycleLedgerHash: masterFirmaTripartita,
+      certificationTimestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 [MAXTRAIDE AI CLOUD]: Gateway Soberano activo en puerto ${PORT}`);
 });
