@@ -519,7 +519,42 @@ app.get('/dashboard', (req, res) => {
 const FIRESTORE_API_KEY = process.env.FIRESTORE_API_KEY || "AIzaSyB94OLmZo1CbDn95kW18VGUdGEWiA1WpfU";
 const FIRESTORE_PROJECT_ID = process.env.FIRESTORE_PROJECT_ID || "max-net-digital";
 const FIRESTORE_VAULT_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/empresa/vault?key=${FIRESTORE_API_KEY}`;
+const FIRESTORE_USUARIOS_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/Usuarios?key=${FIRESTORE_API_KEY}`;
 const FIRESTORE_CEO_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/Ceo/GFLFPx5yKHXiD6kUYFpq9EjnOfU2?key=${FIRESTORE_API_KEY}`;
+
+// Auditor Soberano de Usuarios Reales en Firestore:
+// "Debe estar su UID en documentos pero tambien en campo 'uid', y su correo en campo 'correo'"
+async function getVerifiedRealUsersCount() {
+  try {
+    const resp = await fetch(FIRESTORE_USUARIOS_URL);
+    if (!resp.ok) return 0;
+    const json = await resp.json();
+    if (!json.documents || !Array.isArray(json.documents)) return 0;
+
+    let realUsersCount = 0;
+    json.documents.forEach(doc => {
+      if (!doc.fields) return; // Sin campos -> Documento de ejemplo o sin datos (Falta evidencia)
+      const fields = doc.fields;
+      const docName = doc.name ? doc.name.split('/').pop() : '';
+
+      // Regla 1: Debe estar su UID en el campo 'uid' correspondiente
+      const uidVal = fields.uid?.stringValue || fields.UID?.stringValue || '';
+      const hasValidUid = uidVal && (uidVal === docName || uidVal.length >= 10);
+
+      // Regla 2: Debe estar el correo con el que se creo en el campo 'correo'
+      const emailVal = fields.correo?.stringValue || fields.email?.stringValue || '';
+      const hasValidEmail = emailVal && emailVal.includes('@') && emailVal.includes('.');
+
+      if (hasValidUid && hasValidEmail) {
+        realUsersCount++;
+      }
+    });
+    return realUsersCount;
+  } catch (e) {
+    console.warn("[Render Sentinel] Error al auditar Usuarios:", e.message);
+    return 0;
+  }
+}
 
 function parseFirestoreDoc(fields) {
   const result = {};
@@ -763,6 +798,8 @@ app.get('/api/webhook/status', async (req, res) => {
     const umbralReactivacion = Math.floor(cap * (tension / 100));
     const isCapacityLocked = totalCoins >= cap;
 
+    const realUsersCount = await getVerifiedRealUsersCount();
+
     res.json({
       status: 'supervised',
       totalCoins: totalCoins,
@@ -772,7 +809,22 @@ app.get('/api/webhook/status', async (req, res) => {
       umbral_reactivacion: umbralReactivacion,
       isCapacityLocked: isCapacityLocked,
       cadenaTokensAcumulada: data.cadenaTokensAcumulada || "",
+      realUsersCount: realUsersCount,
       server_time: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Endpoint dedicado de auditoría de usuarios reales por Render
+app.get('/api/webhook/users-count', async (req, res) => {
+  try {
+    const realUsersCount = await getVerifiedRealUsersCount();
+    res.json({
+      status: "ok",
+      realUsersCount: realUsersCount,
+      timestamp: new Date().toISOString()
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
