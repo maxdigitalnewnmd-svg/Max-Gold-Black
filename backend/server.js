@@ -866,6 +866,54 @@ app.post('/api/webhook/watchdog-heartbeat', async (req, res) => {
       });
     }
 
+    // =========================================================================
+    // REGLA SOBERANA INVIOLABLE DE RENDER SENTINEL:
+    // "Jamás se empieza la fase 2 si no se ha creado el 100% de monedas tokenizadas (1800s reales)"
+    // "Si el 100% de monedas en la fase 2 no tienen el aro anaranjado tampoco empieza la fase 3 (3600s reales)"
+    // "Si se adelantó y no cumple, Render intercede y coloca lo que en realidad debería hacer"
+    // =========================================================================
+    const safeSeconds = Math.max(0, parseInt(activeSeconds, 10) || 0);
+
+    let requiredStage = 1;
+    let expectedCoins = 0;
+    let stageDescription = "";
+
+    if (safeSeconds < 1800) {
+      requiredStage = 1;
+      expectedCoins = Math.min(100000, Math.floor((safeSeconds / 1800) * 100000));
+      stageDescription = `Fase 1 (Fundición Térmica • ${expectedCoins.toLocaleString()} / 100,000 MXC)`;
+    } else if (safeSeconds < 3600) {
+      requiredStage = 2;
+      const stage2Sec = safeSeconds - 1800;
+      const temperedCoins = Math.min(100000, Math.floor((stage2Sec / 1800) * 100000));
+      expectedCoins = temperedCoins;
+      stageDescription = `Fase 2 (Templado Polar con Aro Anaranjado • ${temperedCoins.toLocaleString()} / 100,000)`;
+    } else if (safeSeconds < 5400) {
+      requiredStage = 3;
+      const stage3Sec = safeSeconds - 3600;
+      const sealedCoins = Math.min(100000, Math.floor((stage3Sec / 1800) * 100000));
+      expectedCoins = sealedCoins;
+      stageDescription = `Fase 3 (Polvo Estelar y Sellado Cósmico • ${sealedCoins.toLocaleString()} / 100,000)`;
+    } else {
+      requiredStage = 3;
+      expectedCoins = 100000;
+      stageDescription = `Ciclo Completo (100,000 MXC listas para ALMACENAMIENTO)`;
+    }
+
+    // SI EL SOFTWARE INTENTÓ ADELANTARSE DE FASE: RENDER INTERCEDE Y REESTABLECE LA FASE REAL
+    if (etapa > requiredStage) {
+      console.warn(`[Render Sentinel] INTERCESIÓN: Software reportó Etapa ${etapa} indebidamente a los ${safeSeconds}s. Render fuerza regreso a Etapa ${requiredStage}.`);
+      return res.json({
+        status: "supervised",
+        command: "FORCE_CORRECT_STAGE",
+        forcedStage: requiredStage,
+        activeSeconds: safeSeconds,
+        expectedCoins: expectedCoins,
+        message: `Render Sentinel intercedió: Prohibido ingresar a Etapa ${etapa} sin cumplir el 100% de la fase previa. Corregido a Etapa ${requiredStage} (${safeSeconds}s físicos).`,
+        serverTime: new Date().toISOString()
+      });
+    }
+
     // Actualización de pulso y telemetría en tiempo real en Firestore
     try {
       const updatePulseUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=lastServerSync&updateMask.fieldPaths=renderSentinelStatus&updateMask.fieldPaths=progresoCicloActivo&updateMask.fieldPaths=monedasEnProceso`;
@@ -873,8 +921,8 @@ app.post('/api/webhook/watchdog-heartbeat', async (req, res) => {
         fields: {
           lastServerSync: { timestampValue: new Date().toISOString() },
           renderSentinelStatus: { stringValue: "VIGILADO_EN_TIEMPO_REAL_POR_RENDER" },
-          progresoCicloActivo: { stringValue: `Ciclo ${ciclo || 1} • Etapa ${etapa || 1} • ${(coinsForged || 0).toLocaleString()} MXC en proceso` },
-          monedasEnProceso: { integerValue: String(coinsForged || 0) }
+          progresoCicloActivo: { stringValue: `Ciclo ${ciclo || 1} • ${stageDescription}` },
+          monedasEnProceso: { integerValue: String(expectedCoins) }
         }
       };
       await fetch(updatePulseUrl, {
@@ -890,8 +938,8 @@ app.post('/api/webhook/watchdog-heartbeat', async (req, res) => {
     return res.json({
       status: "supervised",
       command: "CONTINUE_SUPERVISED",
-      activeStage: etapa,
-      coinsForged: coinsForged,
+      activeStage: requiredStage,
+      coinsForged: expectedCoins,
       serverTime: new Date().toISOString()
     });
   } catch (e) {
@@ -1074,12 +1122,30 @@ app.post('/api/webhook/audit-and-resume', async (req, res) => {
       });
     }
 
+    const safeSeconds = Math.max(0, parseInt(activeSeconds, 10) || 0);
+    let allowedStage = 1;
+    let expectedCoins = 0;
+    if (safeSeconds < 1800) {
+      allowedStage = 1;
+      expectedCoins = Math.min(100000, Math.floor((safeSeconds / 1800) * 100000));
+    } else if (safeSeconds < 3600) {
+      allowedStage = 2;
+      expectedCoins = Math.min(100000, Math.floor(((safeSeconds - 1800) / 1800) * 100000));
+    } else if (safeSeconds < 5400) {
+      allowedStage = 3;
+      expectedCoins = Math.min(100000, Math.floor(((safeSeconds - 3600) / 1800) * 100000));
+    } else {
+      allowedStage = 3;
+      expectedCoins = 100000;
+    }
+
     return res.json({
       authorized: true,
       action: "RESUME_IN_PROGRESS",
-      message: `Render audito el progreso en curso (${activeSeconds || 0}s / ${coinsForged || 0} monedas). Permiso concedido para seguir avanzando.`,
-      activeSeconds: activeSeconds || 0,
-      coinsForged: coinsForged || 0,
+      message: `Render auditó el progreso en curso (${safeSeconds}s físicos • Etapa ${allowedStage} • ${expectedCoins.toLocaleString()} MXC). Permiso concedido para reanudar exactamente por donde quedó.`,
+      activeSeconds: safeSeconds,
+      activeStage: allowedStage,
+      coinsForged: expectedCoins,
       certifiedCycles,
       invalidCycles,
       serverTime: new Date().toISOString()
