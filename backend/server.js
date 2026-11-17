@@ -661,7 +661,7 @@ app.post('/api/vault/validate-and-seal-cycle', async (req, res) => {
     const nuevoCiclo = (currentData.ciclo || ciclo || 1) + 1;
     const nuevaCadena = (currentData.cadenaTokensAcumulada || "") + `::C${ciclo}_${masterFirmaTripartita}`;
 
-    const updatePatchUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=ciclo&updateMask.fieldPaths=cadenaTokensAcumulada&updateMask.fieldPaths=lastCycleLedgerFile&updateMask.fieldPaths=lastCycleLedgerHash&updateMask.fieldPaths=lastServerSync`;
+    const updatePatchUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=ciclo&updateMask.fieldPaths=cadenaTokensAcumulada&updateMask.fieldPaths=lastCycleLedgerFile&updateMask.fieldPaths=lastCycleLedgerHash&updateMask.fieldPaths=lastServerSync&updateMask.fieldPaths=monedasEnProceso&updateMask.fieldPaths=progresoCicloActivo`;
 
     const patchBody = {
       fields: {
@@ -670,7 +670,9 @@ app.post('/api/vault/validate-and-seal-cycle', async (req, res) => {
         cadenaTokensAcumulada: { stringValue: nuevaCadena },
         lastCycleLedgerFile: { stringValue: ledgerFileName },
         lastCycleLedgerHash: { stringValue: masterFirmaTripartita },
-        lastServerSync: { timestampValue: new Date().toISOString() }
+        lastServerSync: { timestampValue: new Date().toISOString() },
+        monedasEnProceso: { integerValue: "0" },
+        progresoCicloActivo: { stringValue: `Ciclo ${ciclo} sellado con éxito • Iniciando Ciclo ${nuevoCiclo}` }
       }
     };
 
@@ -812,6 +814,26 @@ app.post('/api/webhook/watchdog-heartbeat', async (req, res) => {
       });
     }
 
+    // Actualización de pulso y telemetría en tiempo real en Firestore
+    try {
+      const updatePulseUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=lastServerSync&updateMask.fieldPaths=renderSentinelStatus&updateMask.fieldPaths=progresoCicloActivo&updateMask.fieldPaths=monedasEnProceso`;
+      const pulseBody = {
+        fields: {
+          lastServerSync: { timestampValue: new Date().toISOString() },
+          renderSentinelStatus: { stringValue: "VIGILADO_EN_TIEMPO_REAL_POR_RENDER" },
+          progresoCicloActivo: { stringValue: `Ciclo ${ciclo || 1} • Etapa ${etapa || 1} • ${(coinsForged || 0).toLocaleString()} MXC en proceso` },
+          monedasEnProceso: { integerValue: String(coinsForged || 0) }
+        }
+      };
+      await fetch(updatePulseUrl, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pulseBody)
+      });
+    } catch (fErr) {
+      console.warn("[Watchdog] Fallo al reflejar pulso en Firestore:", fErr.message);
+    }
+
     // Si estaba pausado pero ya descendió al umbral: Render ordena REANUDAR
     return res.json({
       status: "supervised",
@@ -898,7 +920,7 @@ app.post('/api/webhook/cycle-seal', async (req, res) => {
     const nuevoCiclo = (currentData.ciclo || ciclo || 1) + 1;
     const nuevaCadena = (currentData.cadenaTokensAcumulada || "") + `::C${ciclo}_${masterFirmaTripartita}`;
 
-    const updatePatchUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=ciclo&updateMask.fieldPaths=cadenaTokensAcumulada&updateMask.fieldPaths=lastCycleLedgerFile&updateMask.fieldPaths=lastCycleLedgerHash&updateMask.fieldPaths=lastServerSync`;
+    const updatePatchUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=ciclo&updateMask.fieldPaths=cadenaTokensAcumulada&updateMask.fieldPaths=lastCycleLedgerFile&updateMask.fieldPaths=lastCycleLedgerHash&updateMask.fieldPaths=lastServerSync&updateMask.fieldPaths=monedasEnProceso&updateMask.fieldPaths=progresoCicloActivo`;
 
     const patchBody = {
       fields: {
@@ -907,7 +929,9 @@ app.post('/api/webhook/cycle-seal', async (req, res) => {
         cadenaTokensAcumulada: { stringValue: nuevaCadena },
         lastCycleLedgerFile: { stringValue: ledgerFileName },
         lastCycleLedgerHash: { stringValue: masterFirmaTripartita },
-        lastServerSync: { timestampValue: new Date().toISOString() }
+        lastServerSync: { timestampValue: new Date().toISOString() },
+        monedasEnProceso: { integerValue: "0" },
+        progresoCicloActivo: { stringValue: `Ciclo ${ciclo} sellado con éxito • Iniciando Ciclo ${nuevoCiclo}` }
       }
     };
 
