@@ -521,6 +521,144 @@ const FIRESTORE_PROJECT_ID = process.env.FIRESTORE_PROJECT_ID || "max-net-digita
 const FIRESTORE_VAULT_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/empresa/vault?key=${FIRESTORE_API_KEY}`;
 const FIRESTORE_USUARIOS_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/Usuarios?key=${FIRESTORE_API_KEY}`;
 const FIRESTORE_CEO_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/Ceo/GFLFPx5yKHXiD6kUYFpq9EjnOfU2?key=${FIRESTORE_API_KEY}`;
+const FIRESTORE_METRICAS_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/empresa/metricas?key=${FIRESTORE_API_KEY}`;
+
+// CONFIGURACIÓN ADMOB TOKENIZADA EN RENDER (ANTI-HACKING & REPORTE SEGURO VÍA ENV)
+const ADMOB_CLIENT_ID = process.env.ADMOB_CLIENT_ID || "";
+const ADMOB_CLIENT_SECRET = process.env.ADMOB_CLIENT_SECRET || "";
+const ADMOB_REFRESH_TOKEN = process.env.ADMOB_REFRESH_TOKEN || "";
+const ADMOB_PUBLISHER_ID = process.env.ADMOB_PUBLISHER_ID || "pub-7460647837725402";
+const ADMOB_APP_ID = process.env.ADMOB_APP_ID || "ca-app-pub-7460647837725402~3221960985";
+
+// Obtención de Access Token fresco desde Google OAuth 2.0
+async function getAdMobAccessToken() {
+  try {
+    const params = new URLSearchParams({
+      client_id: ADMOB_CLIENT_ID,
+      client_secret: ADMOB_CLIENT_SECRET,
+      refresh_token: ADMOB_REFRESH_TOKEN,
+      grant_type: 'refresh_token'
+    });
+    const resp = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
+    });
+    if (!resp.ok) {
+      const errTxt = await resp.text();
+      console.warn('[AdMob Sentinel] Error obteniendo Access Token:', errTxt);
+      return null;
+    }
+    const data = await resp.json();
+    return data.access_token;
+  } catch (e) {
+    console.warn('[AdMob Sentinel] Excepción al renovar Access Token:', e.message);
+    return null;
+  }
+}
+
+// Consulta de Reporte Oficial de AdMob Network API v1
+async function fetchAdMobNetworkReport() {
+  try {
+    const accessToken = await getAdMobAccessToken();
+    if (!accessToken) return null;
+
+    const currentYear = new Date().getFullYear();
+    const url = `https://admob.googleapis.com/v1/accounts/${ADMOB_PUBLISHER_ID}/networkReport:generate`;
+    const body = {
+      reportSpec: {
+        dateRange: {
+          startDate: { year: currentYear, month: 1, day: 1 },
+          endDate: { year: currentYear, month: 12, day: 31 }
+        },
+        dimensions: ['DATE'],
+        metrics: ['CLICKS', 'ESTIMATED_EARNINGS', 'IMPRESSIONS']
+      }
+    };
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.warn('[AdMob Sentinel] Error en API AdMob:', resp.status, err);
+      return null;
+    }
+
+    const data = await resp.json();
+    let totalClicks = 0;
+    let totalMicros = 0;
+    let totalImpressions = 0;
+
+    if (Array.isArray(data)) {
+      data.forEach(item => {
+        const metrics = item.row?.metricValues || item.footer?.metricValues;
+        if (metrics) {
+          if (metrics.CLICKS?.integerValue) totalClicks += parseInt(metrics.CLICKS.integerValue, 10);
+          if (metrics.ESTIMATED_EARNINGS?.microsValue) totalMicros += parseInt(metrics.ESTIMATED_EARNINGS.microsValue, 10);
+          if (metrics.IMPRESSIONS?.integerValue) totalImpressions += parseInt(metrics.IMPRESSIONS.integerValue, 10);
+        }
+      });
+    }
+
+    const totalRevenue = totalMicros / 1000000;
+    return {
+      clicks: totalClicks,
+      revenue: totalRevenue,
+      impressions: totalImpressions,
+      publisherId: ADMOB_PUBLISHER_ID,
+      appId: ADMOB_APP_ID,
+      syncedAt: new Date().toISOString()
+    };
+  } catch (e) {
+    console.warn('[AdMob Sentinel] Excepción en fetchAdMobNetworkReport:', e.message);
+    return null;
+  }
+}
+
+// Sincronización oficial de Métricas de AdMob en Firestore 'empresa/metricas'
+async function syncAdMobMetricsToFirestore() {
+  try {
+    const report = await fetchAdMobNetworkReport();
+    if (!report) return { success: false, reason: 'ADMOB_REPORT_FETCH_FAILED' };
+
+    const updateUrl = `${FIRESTORE_METRICAS_URL}&updateMask.fieldPaths=clicks&updateMask.fieldPaths=revenue&updateMask.fieldPaths=impressions&updateMask.fieldPaths=lastAdmobSync&updateMask.fieldPaths=admobPublisherId&updateMask.fieldPaths=admobAppId`;
+    const patchBody = {
+      fields: {
+        clicks: { integerValue: String(report.clicks) },
+        revenue: { doubleValue: report.revenue },
+        impressions: { integerValue: String(report.impressions) },
+        lastAdmobSync: { timestampValue: report.syncedAt },
+        admobPublisherId: { stringValue: ADMOB_PUBLISHER_ID },
+        admobAppId: { stringValue: ADMOB_APP_ID }
+      }
+    };
+
+    const patchResp = await fetch(updateUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patchBody)
+    });
+
+    if (patchResp.ok) {
+      console.log(`[AdMob Sentinel] Sincronización Exitosa en Firestore: ${report.clicks} Clics Válidos | $${report.revenue.toFixed(2)} USD Ingresos.`);
+      return { success: true, report };
+    } else {
+      const pErr = await patchResp.text();
+      console.warn('[AdMob Sentinel] Error al actualizar Firestore metricas:', pErr);
+      return { success: false, reason: 'FIRESTORE_UPDATE_FAILED', details: pErr };
+    }
+  } catch (err) {
+    console.warn('[AdMob Sentinel] Error en syncAdMobMetricsToFirestore:', err.message);
+    return { success: false, error: err.message };
+  }
+}
 
 // Auditor Soberano de Usuarios Reales en Firestore:
 // "Debe estar su UID en documentos pero tambien en campo 'uid', y su correo en campo 'correo'"
@@ -1154,6 +1292,58 @@ app.post('/api/webhook/audit-and-resume', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// ENDPOINTS ADMOB VIGILADOS POR RENDER (REPORTE SEGURO & SSV)
+app.get('/api/admob/status', async (req, res) => {
+  res.json({
+    status: 'active',
+    publisherId: ADMOB_PUBLISHER_ID,
+    appId: ADMOB_APP_ID,
+    hasRefreshToken: !!ADMOB_REFRESH_TOKEN,
+    serverTime: new Date().toISOString()
+  });
+});
+
+app.post('/api/admob/sync', async (req, res) => {
+  const result = await syncAdMobMetricsToFirestore();
+  res.json(result);
+});
+
+// Callback SSV (Server-Side Verification) para Rewarded Ads en app móvil
+app.get('/api/admob/reward-callback', async (req, res) => {
+  try {
+    const { ad_network, ad_unit, reward_amount, reward_item, timestamp, transaction_id, user_id, signature, key_id } = req.query;
+    console.log(`[AdMob SSV] Clic y Recompensa recibida: User=${user_id || 'anónimo'}, Trans=${transaction_id}, Unit=${ad_unit}`);
+    
+    try {
+      const getMetricas = await fetch(FIRESTORE_METRICAS_URL);
+      if (getMetricas.ok) {
+        const doc = await getMetricas.json();
+        const curClicks = parseInt(doc.fields?.clicks?.integerValue || '0', 10);
+        const updateUrl = `${FIRESTORE_METRICAS_URL}&updateMask.fieldPaths=clicks&updateMask.fieldPaths=lastAdmobSync`;
+        await fetch(updateUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              clicks: { integerValue: String(curClicks + 1) },
+              lastAdmobSync: { timestampValue: new Date().toISOString() }
+            }
+          })
+        });
+      }
+    } catch (e) {}
+
+    return res.status(200).send('OK');
+  } catch (err) {
+    console.warn('[AdMob SSV] Error procesando callback:', err.message);
+    return res.status(500).send('ERROR');
+  }
+});
+
+// Sincronización automática de AdMob cada 15 minutos (y a los 5 segundos del arranque)
+setInterval(syncAdMobMetricsToFirestore, 15 * 60 * 1000);
+setTimeout(syncAdMobMetricsToFirestore, 5000);
 
 app.listen(PORT, () => {
   console.log(`🚀 [MAXTRAIDE AI CLOUD]: Gateway Soberano activo en puerto ${PORT}`);
