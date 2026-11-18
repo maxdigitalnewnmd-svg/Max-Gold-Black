@@ -1764,6 +1764,33 @@ app.post('/api/maxfapp/burn-purchase', async (req, res) => {
       }
     } catch (mErr) {}
 
+    // 6. Eliminar y purgar tokens de Almacenamiento Central y Algoritmo en 'empresa/vault'
+    try {
+      const vResp = await fetch(FIRESTORE_VAULT_URL);
+      if (vResp.ok) {
+        const vDoc = await vResp.json();
+        const vFields = parseFirestoreDoc(vDoc.fields);
+        const curEliminados = parseInt(vFields.tokensEliminadosAlmacenamiento || '0', 10);
+        const newEliminados = curEliminados + burnCost;
+
+        const patchVault = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=tokensEliminadosAlmacenamiento&updateMask.fieldPaths=ultimoTokenEliminado&updateMask.fieldPaths=estadoPurgaAlgoritmo&updateMask.fieldPaths=lastBurnSync`;
+        await fetch(patchVault, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              tokensEliminadosAlmacenamiento: { integerValue: String(newEliminados) },
+              ultimoTokenEliminado: { stringValue: burnedTokens.join(',') },
+              estadoPurgaAlgoritmo: { stringValue: 'TOKENS_PURGADOS_DEFINITIVAMENTE_DE_ALMACENAMIENTO_Y_ALGORITMO' },
+              lastBurnSync: { timestampValue: new Date().toISOString() }
+            }
+          })
+        });
+      }
+    } catch (vErr) {
+      console.warn('[MAXFAPP Burn] Error purgando tokens en Vault:', vErr.message);
+    }
+
     console.log(`[MAXFAPP Burn] 🔥 Incineración completada: -${burnCost} MXC para ${userId}. Burn ID: ${burnId}. Nuevo saldo: ${newBalance}`);
 
     return res.json({
