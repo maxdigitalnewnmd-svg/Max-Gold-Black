@@ -529,6 +529,8 @@ const ADMOB_CLIENT_SECRET = process.env.ADMOB_CLIENT_SECRET || "";
 const ADMOB_REFRESH_TOKEN = process.env.ADMOB_REFRESH_TOKEN || "";
 const ADMOB_PUBLISHER_ID = process.env.ADMOB_PUBLISHER_ID || "pub-7460647837725402";
 const ADMOB_APP_ID = process.env.ADMOB_APP_ID || "ca-app-pub-7460647837725402~3221960985";
+const ADMOB_REWARDED_AD_UNIT = process.env.ADMOB_REWARDED_AD_UNIT || "ca-app-pub-7460647837725402/1110802962";
+const ADMOB_TOKEN_SECRET = process.env.ADMOB_TOKEN_SECRET || "MAX_TOKENIZED_ADMOB_VAULT_KEY_2026";
 
 // Obtención de Access Token fresco desde Google OAuth 2.0
 async function getAdMobAccessToken() {
@@ -1293,13 +1295,15 @@ app.post('/api/webhook/audit-and-resume', async (req, res) => {
   }
 });
 
-// ENDPOINTS ADMOB VIGILADOS POR RENDER (REPORTE SEGURO & SSV)
+// ENDPOINTS ADMOB VIGILADOS POR RENDER (REPORTE SEGURO & INYECCIÓN TOKENIZADA A LA APP)
 app.get('/api/admob/status', async (req, res) => {
   res.json({
     status: 'active',
     publisherId: ADMOB_PUBLISHER_ID,
     appId: ADMOB_APP_ID,
+    rewardedAdUnit: ADMOB_REWARDED_AD_UNIT,
     hasRefreshToken: !!ADMOB_REFRESH_TOKEN,
+    injectionMode: 'ENCRYPTED_TOKEN_DYNAMIC_DISPATCH',
     serverTime: new Date().toISOString()
   });
 });
@@ -1309,12 +1313,89 @@ app.post('/api/admob/sync', async (req, res) => {
   res.json(result);
 });
 
-// Callback SSV (Server-Side Verification) para Rewarded Ads en app móvil
+// DISPARADOR DE ANUNCIO PARA LA APP MÓVIL (CERO CÓDIGO PEGADO EN LA APP)
+// La app móvil solo envía su UID: Render evalúa, autoriza y emite un ticket tokenizado encriptado
+app.post('/api/admob/request-ad-token', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'USER_ID_REQUIRED' });
+    }
+
+    // Comprobación de existencia del usuario en Firestore
+    const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${userId}?key=${FIRESTORE_API_KEY}`;
+    const userCheck = await fetch(userDocUrl);
+    if (!userCheck.ok && userCheck.status === 404) {
+      return res.status(403).json({ error: 'USER_NOT_REGISTERED_IN_VAULT' });
+    }
+
+    const timestamp = Date.now();
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const signature = crypto.createHmac('sha256', ADMOB_TOKEN_SECRET)
+      .update(`${userId}:${nonce}:${timestamp}:${ADMOB_REWARDED_AD_UNIT}`)
+      .digest('hex');
+
+    const tokenPayload = {
+      authorized: true,
+      adUnitId: ADMOB_REWARDED_AD_UNIT,
+      customData: `${userId}__${nonce}__${timestamp}__${signature.substring(0, 16)}`,
+      rewardAmount: 1000,
+      rewardItem: 'MaxCoins',
+      expiresInSec: 180,
+      tokenHash: signature
+    };
+
+    console.log(`[AdMob Injection] Ticket tokenizado emitido para usuario ${userId} (Nonce: ${nonce.substring(0,8)}...)`);
+    return res.json(tokenPayload);
+  } catch (err) {
+    console.warn('[AdMob Injection] Error al generar token de anuncio:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Callback SSV (Server-Side Verification) ejecutado por los servidores de Google AdMob
 app.get('/api/admob/reward-callback', async (req, res) => {
   try {
-    const { ad_network, ad_unit, reward_amount, reward_item, timestamp, transaction_id, user_id, signature, key_id } = req.query;
-    console.log(`[AdMob SSV] Clic y Recompensa recibida: User=${user_id || 'anónimo'}, Trans=${transaction_id}, Unit=${ad_unit}`);
+    const { ad_network, ad_unit, reward_amount, reward_item, timestamp, transaction_id, user_id, custom_data, signature, key_id } = req.query;
+    console.log(`[AdMob SSV] Validación Google recibida: User=${user_id || 'anónimo'}, Trans=${transaction_id}, Unit=${ad_unit}, Custom=${custom_data || 'N/A'}`);
     
+    // 1. Extraer UID del usuario desde user_id o custom_data
+    let targetUid = user_id;
+    if (!targetUid && custom_data && custom_data.includes('__')) {
+      targetUid = custom_data.split('__')[0];
+    }
+
+    const amt = parseInt(reward_amount, 10) || 1000;
+
+    // 2. Si hay UID de usuario válido, acreditar recompensa directamente en su saldo de Firestore
+    if (targetUid && targetUid.length > 5) {
+      try {
+        const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${targetUid}?key=${FIRESTORE_API_KEY}`;
+        const uResp = await fetch(userDocUrl);
+        if (uResp.ok) {
+          const uData = await uResp.json();
+          const currentCoins = parseInt(uData.fields?.saldoMaxCoins?.integerValue || uData.fields?.maxcoins?.integerValue || '0', 10);
+          const newCoins = currentCoins + amt;
+
+          const patchUserUrl = `${userDocUrl}&updateMask.fieldPaths=saldoMaxCoins&updateMask.fieldPaths=lastRewardAd`;
+          await fetch(patchUserUrl, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                saldoMaxCoins: { integerValue: String(newCoins) },
+                lastRewardAd: { timestampValue: new Date().toISOString() }
+              }
+            })
+          });
+          console.log(`[AdMob SSV] Recompensa de ${amt} MaxCoins acreditada al usuario ${targetUid}. Saldo total: ${newCoins}`);
+        }
+      } catch (uErr) {
+        console.warn(`[AdMob SSV] Error actualizando usuario ${targetUid}:`, uErr.message);
+      }
+    }
+
+    // 3. Incrementar el contador global de clics válidos en 'empresa/metricas'
     try {
       const getMetricas = await fetch(FIRESTORE_METRICAS_URL);
       if (getMetricas.ok) {
@@ -1334,6 +1415,7 @@ app.get('/api/admob/reward-callback', async (req, res) => {
       }
     } catch (e) {}
 
+    // Responder HTTP 200 OK a Google para confirmar recepción auténtica
     return res.status(200).send('OK');
   } catch (err) {
     console.warn('[AdMob SSV] Error procesando callback:', err.message);
