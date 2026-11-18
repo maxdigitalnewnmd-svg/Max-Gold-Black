@@ -1561,8 +1561,9 @@ app.post('/api/maxfapp/claim-reward', async (req, res) => {
       });
     }
 
-    // 2. Descontar 1,000 de Vault totalCoins
+    // 2. Descontar 1,000 de Vault totalCoins y avanzar puntero secuencial atómico de bloques
     let remainingVaultCoins = 0;
+    let nextBlockStart = 1;
     try {
       const vResp = await fetch(FIRESTORE_VAULT_URL);
       if (vResp.ok) {
@@ -1571,13 +1572,19 @@ app.post('/api/maxfapp/claim-reward', async (req, res) => {
         const curVault = parseInt(vFields.totalCoins || '0', 10);
         remainingVaultCoins = Math.max(0, curVault - 1000);
 
-        const patchVaultUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=lastServerSync`;
+        // Puntero monótono estricto: Garantiza que JAMÁS dos usuarios reciban el mismo bloque
+        const lastBlock = parseInt(vFields.ultimoBloqueLedgerAsignado || '0', 10);
+        nextBlockStart = lastBlock + 1;
+        const newLastBlock = lastBlock + 4;
+
+        const patchVaultUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=ultimoBloqueLedgerAsignado&updateMask.fieldPaths=lastServerSync`;
         await fetch(patchVaultUrl, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             fields: {
               totalCoins: { integerValue: String(remainingVaultCoins) },
+              ultimoBloqueLedgerAsignado: { integerValue: String(newLastBlock) },
               lastServerSync: { timestampValue: new Date().toISOString() }
             }
           })
@@ -1587,14 +1594,13 @@ app.post('/api/maxfapp/claim-reward', async (req, res) => {
       console.warn('[MAXFAPP Claim] Error descontando de Vault:', vErr.message);
     }
 
-    // 3. Generar Asignación de Tokens Libres del Algoritmo y Ensamblaje de ADN
+    // 3. Generar Asignación de Tokens Libres del Algoritmo (ÚNICOS E IRREPETIBLES)
     const cyclePick = 1;
-    const blockBase = Math.floor(Math.random() * 380) + 1;
     const batchLedgerTokens = [
-      `MXC-C${cyclePick}-B${blockBase}-BLK1_250`,
-      `MXC-C${cyclePick}-B${blockBase + 1}-BLK2_250`,
-      `MXC-C${cyclePick}-B${blockBase + 2}-BLK3_250`,
-      `MXC-C${cyclePick}-B${blockBase + 3}-BLK4_250`
+      `MXC-C${cyclePick}-B${nextBlockStart}-BLK1_250`,
+      `MXC-C${cyclePick}-B${nextBlockStart + 1}-BLK2_250`,
+      `MXC-C${cyclePick}-B${nextBlockStart + 2}-BLK3_250`,
+      `MXC-C${cyclePick}-B${nextBlockStart + 3}-BLK4_250`
     ];
 
     const timestamp = Date.now();
