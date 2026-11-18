@@ -1536,112 +1536,162 @@ app.post('/api/maxfapp/watch-ad-progress', async (req, res) => {
   }
 });
 
+// MUTEX SERIALIZADOR EN MEMORIA: GARANTIZA CERO COLISIONES Y CERO DOBLE GASTO BAJO CONCURRENCIA MASIVA (300+ USUARIOS)
+let vaultClaimChain = Promise.resolve();
+function runSynchronizedVaultClaim(taskFn) {
+  return new Promise((resolve, reject) => {
+    vaultClaimChain = vaultClaimChain.then(async () => {
+      try {
+        const result = await taskFn();
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+let vaultBurnChain = Promise.resolve();
+function runSynchronizedVaultBurn(taskFn) {
+  return new Promise((resolve, reject) => {
+    vaultBurnChain = vaultBurnChain.then(async () => {
+      try {
+        const result = await taskFn();
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
 // 3. Reclamar 1,000 MAXCOINS (Descuenta de Vault, Tokeniza ADN y acredita a usuario)
 app.post('/api/maxfapp/claim-reward', async (req, res) => {
   try {
     const { userId } = req.body || {};
     if (!userId) return res.status(400).json({ error: 'USER_ID_REQUIRED' });
 
-    // 1. Obtener usuario
-    const userDocUrl = getUserDocUrl(userId);
-    const uResp = await fetch(userDocUrl);
-    if (!uResp.ok) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+    // Ejecutar reclamo bajo cerrojo atómico sincronizado (Inmune a colisiones de 300+ usuarios simultáneos)
+    const claimResult = await runSynchronizedVaultClaim(async () => {
+      // 1. Obtener usuario
+      const userDocUrl = getUserDocUrl(userId);
+      const uResp = await fetch(userDocUrl);
+      if (!uResp.ok) return { status: 404, data: { error: 'USER_NOT_FOUND' } };
 
-    const uDoc = await uResp.json();
-    const fields = parseFirestoreDoc(uDoc.fields);
-    const currentAds = parseInt(fields.ads_visto || '0', 10);
+      const uDoc = await uResp.json();
+      const fields = parseFirestoreDoc(uDoc.fields);
+      const currentAds = parseInt(fields.ads_visto || '0', 10);
 
-    if (currentAds < 10) {
-      return res.status(400).json({
-        success: false,
-        error: 'REQUISITO_INCOMPLETO',
-        ads_visto: currentAds,
-        required: 10,
-        message: `Aún no cumples la meta: llevas ${currentAds} de 10 anuncios.`
-      });
-    }
-
-    // 2. Descontar 1,000 de Vault totalCoins y avanzar puntero secuencial atómico de bloques
-    let remainingVaultCoins = 0;
-    let nextBlockStart = 1;
-    try {
-      const vResp = await fetch(FIRESTORE_VAULT_URL);
-      if (vResp.ok) {
-        const vDoc = await vResp.json();
-        const vFields = parseFirestoreDoc(vDoc.fields);
-        const curVault = parseInt(vFields.totalCoins || '0', 10);
-        remainingVaultCoins = Math.max(0, curVault - 1000);
-
-        // Puntero monótono estricto: Garantiza que JAMÁS dos usuarios reciban el mismo bloque
-        const lastBlock = parseInt(vFields.ultimoBloqueLedgerAsignado || '0', 10);
-        nextBlockStart = lastBlock + 1;
-        const newLastBlock = lastBlock + 4;
-
-        const patchVaultUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=ultimoBloqueLedgerAsignado&updateMask.fieldPaths=lastServerSync`;
-        await fetch(patchVaultUrl, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: {
-              totalCoins: { integerValue: String(remainingVaultCoins) },
-              ultimoBloqueLedgerAsignado: { integerValue: String(newLastBlock) },
-              lastServerSync: { timestampValue: new Date().toISOString() }
-            }
-          })
-        });
+      if (currentAds < 10) {
+        return {
+          status: 400,
+          data: {
+            success: false,
+            error: 'REQUISITO_INCOMPLETO',
+            ads_visto: currentAds,
+            required: 10,
+            message: `Aún no cumples la meta: llevas ${currentAds} de 10 anuncios.`
+          }
+        };
       }
-    } catch (vErr) {
-      console.warn('[MAXFAPP Claim] Error descontando de Vault:', vErr.message);
-    }
 
-    // 3. Generar Asignación de Tokens Libres del Algoritmo (ÚNICOS E IRREPETIBLES)
-    const cyclePick = 1;
-    const batchLedgerTokens = [
-      `MXC-C${cyclePick}-B${nextBlockStart}-BLK1_250`,
-      `MXC-C${cyclePick}-B${nextBlockStart + 1}-BLK2_250`,
-      `MXC-C${cyclePick}-B${nextBlockStart + 2}-BLK3_250`,
-      `MXC-C${cyclePick}-B${nextBlockStart + 3}-BLK4_250`
-    ];
+      // 2. Descontar 1,000 de Vault totalCoins y avanzar puntero secuencial atómico de bloques
+      let remainingVaultCoins = 0;
+      let nextBlockStart = 1;
+      const vResp = await fetch(FIRESTORE_VAULT_URL);
+      if (!vResp.ok) return { status: 500, data: { error: 'FIRESTORE_VAULT_UNREACHABLE' } };
 
-    const timestamp = Date.now();
-    const dnaRaw = batchLedgerTokens.join('::') + `::${userId}::${timestamp}`;
-    const dnaHash = crypto.createHmac('sha256', ADMOB_TOKEN_SECRET)
-      .update(dnaRaw)
-      .digest('hex');
-    const tokenSignature = `MAX-DNA-${dnaHash.substring(0, 24).toUpperCase()}`;
+      const vDoc = await vResp.json();
+      const vFields = parseFirestoreDoc(vDoc.fields);
+      const curVault = parseInt(vFields.totalCoins || '0', 10);
 
-    // 4. Acreditar 1,000 MAXCOINS al usuario y resetear ads_visto a 0
-    const curBalance = parseInt(fields.MAXCOINS !== undefined ? fields.MAXCOINS : (fields.saldoMaxCoins || 0), 10);
-    const newBalance = curBalance + 1000;
+      // Verificación de existencia real: La Bóveda no puede operar en negativo
+      if (curVault < 1000) {
+        return {
+          status: 403,
+          data: {
+            success: false,
+            error: 'BOVEDA_AGOTADA',
+            currentVault: curVault,
+            message: 'La Bóveda Central ha agotado sus monedas libres certificadas para este ciclo. Espere la producción del siguiente lote en MAXSOFT.'
+          }
+        };
+      }
 
-    const patchUserUrl = `${userDocUrl}&updateMask.fieldPaths=MAXCOINS&updateMask.fieldPaths=saldoMaxCoins&updateMask.fieldPaths=ads_visto&updateMask.fieldPaths=ultimo_token_adn&updateMask.fieldPaths=adn_tokens_libres&updateMask.fieldPaths=fecha_ultima_recompensa`;
-    await fetch(patchUserUrl, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fields: {
-          MAXCOINS: { integerValue: String(newBalance) },
-          saldoMaxCoins: { integerValue: String(newBalance) },
-          ads_visto: { stringValue: '0' },
-          ultimo_token_adn: { stringValue: tokenSignature },
-          adn_tokens_libres: { stringValue: JSON.stringify(batchLedgerTokens) },
-          fecha_ultima_recompensa: { timestampValue: new Date().toISOString() }
+      remainingVaultCoins = curVault - 1000;
+
+      // Puntero monótono estricto: Garantiza que JAMÁS dos usuarios reciban el mismo bloque
+      const lastBlock = parseInt(vFields.ultimoBloqueLedgerAsignado || '0', 10);
+      nextBlockStart = lastBlock + 1;
+      const newLastBlock = lastBlock + 4;
+
+      const patchVaultUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=ultimoBloqueLedgerAsignado&updateMask.fieldPaths=lastServerSync`;
+      await fetch(patchVaultUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            totalCoins: { integerValue: String(remainingVaultCoins) },
+            ultimoBloqueLedgerAsignado: { integerValue: String(newLastBlock) },
+            lastServerSync: { timestampValue: new Date().toISOString() }
+          }
+        })
+      });
+
+      // 3. Generar Asignación de Tokens Libres del Algoritmo (ÚNICOS E IRREPETIBLES)
+      const cyclePick = 1;
+      const batchLedgerTokens = [
+        `MXC-C${cyclePick}-B${nextBlockStart}-BLK1_250`,
+        `MXC-C${cyclePick}-B${nextBlockStart + 1}-BLK2_250`,
+        `MXC-C${cyclePick}-B${nextBlockStart + 2}-BLK3_250`,
+        `MXC-C${cyclePick}-B${nextBlockStart + 3}-BLK4_250`
+      ];
+
+      const timestamp = Date.now();
+      const dnaRaw = batchLedgerTokens.join('::') + `::${userId}::${timestamp}`;
+      const dnaHash = crypto.createHmac('sha256', ADMOB_TOKEN_SECRET)
+        .update(dnaRaw)
+        .digest('hex');
+      const tokenSignature = `MAX-DNA-${dnaHash.substring(0, 24).toUpperCase()}`;
+
+      // 4. Acreditar 1,000 MAXCOINS al usuario y resetear ads_visto a 0
+      const curBalance = parseInt(fields.MAXCOINS !== undefined ? fields.MAXCOINS : (fields.saldoMaxCoins || 0), 10);
+      const newBalance = curBalance + 1000;
+
+      const patchUserUrl = `${userDocUrl}&updateMask.fieldPaths=MAXCOINS&updateMask.fieldPaths=saldoMaxCoins&updateMask.fieldPaths=ads_visto&updateMask.fieldPaths=ultimo_token_adn&updateMask.fieldPaths=adn_tokens_libres&updateMask.fieldPaths=fecha_ultima_recompensa`;
+      await fetch(patchUserUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            MAXCOINS: { integerValue: String(newBalance) },
+            saldoMaxCoins: { integerValue: String(newBalance) },
+            ads_visto: { stringValue: '0' },
+            ultimo_token_adn: { stringValue: tokenSignature },
+            adn_tokens_libres: { stringValue: JSON.stringify(batchLedgerTokens) },
+            fecha_ultima_recompensa: { timestampValue: new Date().toISOString() }
+          }
+        })
+      });
+
+      console.log(`[MAXFAPP Claim Sincronizado] Usuario ${userId} reclamó 1,000 MAXCOINS. Bloques ${nextBlockStart} a ${newLastBlock}. Saldo restante en Vault: ${remainingVaultCoins}`);
+
+      return {
+        status: 200,
+        data: {
+          success: true,
+          reward: 1000,
+          newBalance: newBalance,
+          tokenDna: tokenSignature,
+          allocatedTokens: batchLedgerTokens,
+          totalCoinsVault: remainingVaultCoins,
+          ads_visto: 0,
+          message: '¡Felicidades! Has reclamado 1,000 MAXCOINS autenticadas y encriptadas con ADN cuántico.'
         }
-      })
+      };
     });
 
-    console.log(`[MAXFAPP Claim] Usuario ${userId} reclamó 1,000 MAXCOINS. ADN Ensamblado: ${tokenSignature}. Tokens: ${batchLedgerTokens.join(', ')}`);
-
-    return res.json({
-      success: true,
-      reward: 1000,
-      newBalance: newBalance,
-      tokenDna: tokenSignature,
-      allocatedTokens: batchLedgerTokens,
-      totalCoinsVault: remainingVaultCoins,
-      ads_visto: 0,
-      message: '¡Felicidades! Has reclamado 1,000 MAXCOINS autenticadas y encriptadas con ADN cuántico.'
-    });
+    return res.status(claimResult.status).json(claimResult.data);
   } catch (err) {
     console.warn('[MAXFAPP Claim] Error:', err.message);
     return res.status(500).json({ error: err.message });
@@ -1748,55 +1798,60 @@ app.post('/api/maxfapp/burn-purchase', async (req, res) => {
       console.warn('[MAXFAPP Burn] Error guardando registro en tokens_quemados:', bErr.message);
     }
 
-    // 5. Incrementar tokensQuemados en 'empresa/metricas'
-    try {
-      const mResp = await fetch(FIRESTORE_METRICAS_URL);
-      if (mResp.ok) {
-        const mDoc = await mResp.json();
-        const mFields = parseFirestoreDoc(mDoc.fields);
-        const curQuemados = parseInt(mFields.tokensQuemados || '0', 10);
-        const newQuemados = curQuemados + burnCost;
+    // 5. Incrementar métricas y purgar tokens de Almacenamiento Central y Algoritmo de forma atómica y sincronizada
+    runSynchronizedVaultBurn(async () => {
+      try {
+        // Actualizar empresa/metricas
+        const mResp = await fetch(FIRESTORE_METRICAS_URL);
+        if (mResp.ok) {
+          const mDoc = await mResp.json();
+          const mFields = parseFirestoreDoc(mDoc.fields);
+          const curQuemados = parseInt(mFields.tokensQuemados || '0', 10);
+          const newQuemados = curQuemados + burnCost;
 
-        const patchMetricas = `${FIRESTORE_METRICAS_URL}&updateMask.fieldPaths=tokensQuemados&updateMask.fieldPaths=lastBurnSync`;
-        await fetch(patchMetricas, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: {
-              tokensQuemados: { integerValue: String(newQuemados) },
-              lastBurnSync: { timestampValue: new Date().toISOString() }
-            }
-          })
-        });
+          const patchMetricas = `${FIRESTORE_METRICAS_URL}&updateMask.fieldPaths=tokensQuemados&updateMask.fieldPaths=lastBurnSync`;
+          await fetch(patchMetricas, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                tokensQuemados: { integerValue: String(newQuemados) },
+                lastBurnSync: { timestampValue: new Date().toISOString() }
+              }
+            })
+          });
+        }
+      } catch (mErr) {
+        console.warn('[MAXFAPP Burn Sincronizado] Error actualizando métricas:', mErr.message);
       }
-    } catch (mErr) {}
 
-    // 6. Eliminar y purgar tokens de Almacenamiento Central y Algoritmo en 'empresa/vault'
-    try {
-      const vResp = await fetch(FIRESTORE_VAULT_URL);
-      if (vResp.ok) {
-        const vDoc = await vResp.json();
-        const vFields = parseFirestoreDoc(vDoc.fields);
-        const curEliminados = parseInt(vFields.tokensEliminadosAlmacenamiento || '0', 10);
-        const newEliminados = curEliminados + burnCost;
+      try {
+        // Actualizar empresa/vault (Purga permanente en Almacenamiento Central)
+        const vResp = await fetch(FIRESTORE_VAULT_URL);
+        if (vResp.ok) {
+          const vDoc = await vResp.json();
+          const vFields = parseFirestoreDoc(vDoc.fields);
+          const curEliminados = parseInt(vFields.tokensEliminadosAlmacenamiento || '0', 10);
+          const newEliminados = curEliminados + burnCost;
 
-        const patchVault = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=tokensEliminadosAlmacenamiento&updateMask.fieldPaths=ultimoTokenEliminado&updateMask.fieldPaths=estadoPurgaAlgoritmo&updateMask.fieldPaths=lastBurnSync`;
-        await fetch(patchVault, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: {
-              tokensEliminadosAlmacenamiento: { integerValue: String(newEliminados) },
-              ultimoTokenEliminado: { stringValue: burnedTokens.join(',') },
-              estadoPurgaAlgoritmo: { stringValue: 'TOKENS_PURGADOS_DEFINITIVAMENTE_DE_ALMACENAMIENTO_Y_ALGORITMO' },
-              lastBurnSync: { timestampValue: new Date().toISOString() }
-            }
-          })
-        });
+          const patchVault = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=tokensEliminadosAlmacenamiento&updateMask.fieldPaths=ultimoTokenEliminado&updateMask.fieldPaths=estadoPurgaAlgoritmo&updateMask.fieldPaths=lastBurnSync`;
+          await fetch(patchVault, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                tokensEliminadosAlmacenamiento: { integerValue: String(newEliminados) },
+                ultimoTokenEliminado: { stringValue: burnedTokens.join(',') },
+                estadoPurgaAlgoritmo: { stringValue: 'TOKENS_PURGADOS_DEFINITIVAMENTE_DE_ALMACENAMIENTO_Y_ALGORITMO' },
+                lastBurnSync: { timestampValue: new Date().toISOString() }
+              }
+            })
+          });
+        }
+      } catch (vErr) {
+        console.warn('[MAXFAPP Burn Sincronizado] Error purgando tokens en Vault:', vErr.message);
       }
-    } catch (vErr) {
-      console.warn('[MAXFAPP Burn] Error purgando tokens en Vault:', vErr.message);
-    }
+    }).catch(err => console.warn('[MAXFAPP Burn Queue Error]:', err.message));
 
     console.log(`[MAXFAPP Burn] 🔥 Incineración completada: -${burnCost} MXC para ${userId}. Burn ID: ${burnId}. Nuevo saldo: ${newBalance}`);
 
