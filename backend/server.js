@@ -1874,6 +1874,58 @@ app.post('/api/maxfapp/burn-purchase', async (req, res) => {
 setInterval(syncAdMobMetricsToFirestore, 15 * 60 * 1000);
 setTimeout(syncAdMobMetricsToFirestore, 5000);
 
+// =========================================================================
+// SISTEMA DE RECOLECCIÓN Y PURGA AUTOMÁTICA DE BASURA (24-HOUR TTL PURGE)
+// Purgar historiales efímeros, colas temporales y tickets en Firestore (>24h)
+// para mantener los costos de Firebase en cero gasto innecesario.
+// =========================================================================
+async function purgeExpiredHistoricalData() {
+  console.log('[GARBAGE COLLECTOR] Ejecutando barrido automático de datos obsoletos (>24h)...');
+  try {
+    const cutoffTime = Date.now() - (24 * 60 * 60 * 1000); // 24 horas exactas
+
+    // 1. Limpieza de memoria RAM (userAdClickCooldowns obsoletos)
+    let memoryPurged = 0;
+    for (const [uid, timestamp] of userAdClickCooldowns.entries()) {
+      if (timestamp < cutoffTime) {
+        userAdClickCooldowns.delete(uid);
+        memoryPurged++;
+      }
+    }
+    if (memoryPurged > 0) {
+      console.log(`[GARBAGE COLLECTOR] ${memoryPurged} sesiones inactivas purgadas de memoria RAM.`);
+    }
+
+    // 2. Limpieza de colección 'tokens_quemados' en Firestore (tickets > 24 horas)
+    // El balance monetario ya fue totalizado de forma definitiva en 'empresa/vault' y 'empresa/metricas'
+    const burnListUrl = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/tokens_quemados?pageSize=100&key=${FIRESTORE_API_KEY}`;
+    const bResp = await fetch(burnListUrl);
+    if (bResp.ok) {
+      const bData = await bResp.json();
+      if (bData.documents && bData.documents.length > 0) {
+        let docsDeleted = 0;
+        for (const doc of bData.documents) {
+          const docDate = new Date(doc.createTime || doc.fields?.fecha?.timestampValue || 0).getTime();
+          if (docDate < cutoffTime) {
+            const delUrl = `https://firestore.googleapis.com/v1/${doc.name}?key=${FIRESTORE_API_KEY}`;
+            await fetch(delUrl, { method: 'DELETE' });
+            docsDeleted++;
+          }
+        }
+        if (docsDeleted > 0) {
+          console.log(`[GARBAGE COLLECTOR] 🔥 ${docsDeleted} tickets de quema obsoletos (>24h) eliminados de Firestore para optimizar costos.`);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[GARBAGE COLLECTOR] Error durante el barrido automático:', err.message);
+  }
+}
+
+// Ejecutar limpieza cada 6 horas y a los 30 segundos del inicio del servidor
+setInterval(purgeExpiredHistoricalData, 6 * 60 * 60 * 1000);
+setTimeout(purgeExpiredHistoricalData, 30 * 1000);
+
 app.listen(PORT, () => {
   console.log(`🚀 [MAXTRAIDE AI CLOUD]: Gateway Soberano activo en puerto ${PORT}`);
 });
