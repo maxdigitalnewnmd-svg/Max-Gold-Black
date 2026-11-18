@@ -523,6 +523,7 @@ const FIRESTORE_VAULT_URL = `https://firestore.googleapis.com/v1/projects/${FIRE
 const FIRESTORE_USUARIOS_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/Usuarios?key=${FIRESTORE_API_KEY}`;
 const FIRESTORE_CEO_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/Ceo/GFLFPx5yKHXiD6kUYFpq9EjnOfU2?key=${FIRESTORE_API_KEY}`;
 const FIRESTORE_METRICAS_URL = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/empresa/metricas?key=${FIRESTORE_API_KEY}`;
+const getUserDocUrl = (uid) => `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/Usuarios/${uid}?key=${FIRESTORE_API_KEY}`;
 
 // CONFIGURACIÓN ADMOB TOKENIZADA EN RENDER (ANTI-HACKING & REPORTE SEGURO VÍA ENV)
 const ADMOB_CLIENT_ID = process.env.ADMOB_CLIENT_ID || "";
@@ -1324,7 +1325,7 @@ app.post('/api/admob/request-ad-token', async (req, res) => {
     }
 
     // Comprobación de existencia del usuario en Firestore
-    const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${userId}?key=${FIRESTORE_API_KEY}`;
+    const userDocUrl = getUserDocUrl(userId);
     const userCheck = await fetch(userDocUrl);
     if (!userCheck.ok && userCheck.status === 404) {
       return res.status(403).json({ error: 'USER_NOT_REGISTERED_IN_VAULT' });
@@ -1371,7 +1372,7 @@ app.get('/api/admob/reward-callback', async (req, res) => {
     // 2. Si hay UID de usuario válido, acreditar recompensa directamente en su saldo de Firestore
     if (targetUid && targetUid.length > 5) {
       try {
-        const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${targetUid}?key=${FIRESTORE_API_KEY}`;
+        const userDocUrl = getUserDocUrl(targetUid);
         const uResp = await fetch(userDocUrl);
         if (uResp.ok) {
           const uData = await uResp.json();
@@ -1437,7 +1438,7 @@ app.get('/api/maxfapp/user-status', async (req, res) => {
     const userId = req.query.userId || req.query.uid;
     if (!userId) return res.status(400).json({ error: 'USER_ID_REQUIRED' });
 
-    const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${userId}?key=${FIRESTORE_API_KEY}`;
+    const userDocUrl = getUserDocUrl(userId);
     const uResp = await fetch(userDocUrl);
     if (!uResp.ok) {
       return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'Usuario no registrado en la Bóveda' });
@@ -1496,7 +1497,7 @@ app.post('/api/maxfapp/watch-ad-progress', async (req, res) => {
     userAdClickCooldowns.set(userId, now);
 
     // Consultar usuario en Firestore
-    const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${userId}?key=${FIRESTORE_API_KEY}`;
+    const userDocUrl = getUserDocUrl(userId);
     const uResp = await fetch(userDocUrl);
     if (!uResp.ok) return res.status(404).json({ error: 'USER_NOT_FOUND' });
 
@@ -1541,7 +1542,7 @@ app.post('/api/maxfapp/claim-reward', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'USER_ID_REQUIRED' });
 
     // 1. Obtener usuario
-    const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${userId}?key=${FIRESTORE_API_KEY}`;
+    const userDocUrl = getUserDocUrl(userId);
     const uResp = await fetch(userDocUrl);
     if (!uResp.ok) return res.status(404).json({ error: 'USER_NOT_FOUND' });
 
@@ -1640,7 +1641,7 @@ app.post('/api/maxfapp/burn-purchase', async (req, res) => {
     }
 
     // 1. Obtener usuario y verificar saldo
-    const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${userId}?key=${FIRESTORE_API_KEY}`;
+    const userDocUrl = getUserDocUrl(userId);
     const uResp = await fetch(userDocUrl);
     if (!uResp.ok) return res.status(404).json({ error: 'USER_NOT_FOUND' });
 
