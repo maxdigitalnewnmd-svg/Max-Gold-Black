@@ -1586,10 +1586,20 @@ app.post('/api/maxfapp/claim-reward', async (req, res) => {
       console.warn('[MAXFAPP Claim] Error descontando de Vault:', vErr.message);
     }
 
-    // 3. Generar Token Criptográfico de ADN Reconstituido
+    // 3. Generar Asignación de Tokens Libres del Algoritmo y Ensamblaje de ADN
+    const cyclePick = 1;
+    const blockBase = Math.floor(Math.random() * 380) + 1;
+    const batchLedgerTokens = [
+      `MXC-C${cyclePick}-B${blockBase}-BLK1_250`,
+      `MXC-C${cyclePick}-B${blockBase + 1}-BLK2_250`,
+      `MXC-C${cyclePick}-B${blockBase + 2}-BLK3_250`,
+      `MXC-C${cyclePick}-B${blockBase + 3}-BLK4_250`
+    ];
+
     const timestamp = Date.now();
+    const dnaRaw = batchLedgerTokens.join('::') + `::${userId}::${timestamp}`;
     const dnaHash = crypto.createHmac('sha256', ADMOB_TOKEN_SECRET)
-      .update(`${userId}:${timestamp}:1000:VAULT_REWARD_TRANSFER`)
+      .update(dnaRaw)
       .digest('hex');
     const tokenSignature = `MAX-DNA-${dnaHash.substring(0, 24).toUpperCase()}`;
 
@@ -1597,7 +1607,7 @@ app.post('/api/maxfapp/claim-reward', async (req, res) => {
     const curBalance = parseInt(fields.MAXCOINS !== undefined ? fields.MAXCOINS : (fields.saldoMaxCoins || 0), 10);
     const newBalance = curBalance + 1000;
 
-    const patchUserUrl = `${userDocUrl}&updateMask.fieldPaths=MAXCOINS&updateMask.fieldPaths=saldoMaxCoins&updateMask.fieldPaths=ads_visto&updateMask.fieldPaths=ultimo_token_adn&updateMask.fieldPaths=fecha_ultima_recompensa`;
+    const patchUserUrl = `${userDocUrl}&updateMask.fieldPaths=MAXCOINS&updateMask.fieldPaths=saldoMaxCoins&updateMask.fieldPaths=ads_visto&updateMask.fieldPaths=ultimo_token_adn&updateMask.fieldPaths=adn_tokens_libres&updateMask.fieldPaths=fecha_ultima_recompensa`;
     await fetch(patchUserUrl, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1607,18 +1617,20 @@ app.post('/api/maxfapp/claim-reward', async (req, res) => {
           saldoMaxCoins: { integerValue: String(newBalance) },
           ads_visto: { stringValue: '0' },
           ultimo_token_adn: { stringValue: tokenSignature },
+          adn_tokens_libres: { stringValue: JSON.stringify(batchLedgerTokens) },
           fecha_ultima_recompensa: { timestampValue: new Date().toISOString() }
         }
       })
     });
 
-    console.log(`[MAXFAPP Claim] Usuario ${userId} reclamó 1,000 MAXCOINS. Nuevo saldo: ${newBalance}. Token: ${tokenSignature}`);
+    console.log(`[MAXFAPP Claim] Usuario ${userId} reclamó 1,000 MAXCOINS. ADN Ensamblado: ${tokenSignature}. Tokens: ${batchLedgerTokens.join(', ')}`);
 
     return res.json({
       success: true,
       reward: 1000,
       newBalance: newBalance,
       tokenDna: tokenSignature,
+      allocatedTokens: batchLedgerTokens,
       totalCoinsVault: remainingVaultCoins,
       ads_visto: 0,
       message: '¡Felicidades! Has reclamado 1,000 MAXCOINS autenticadas y encriptadas con ADN cuántico.'
@@ -1659,16 +1671,37 @@ app.post('/api/maxfapp/burn-purchase', async (req, res) => {
       });
     }
 
-    // 2. Generar Hash Criptográfico de Quema (Incineración)
+    // 2. Extraer tokens de ADN del usuario para la quema y reconstrucción de ADN
+    let activeTokens = [];
+    try {
+      if (fields.adn_tokens_libres) {
+        activeTokens = JSON.parse(fields.adn_tokens_libres);
+      }
+    } catch (e) {}
+
+    // Cada token representa 250 monedas en el algoritmo
+    const blocksToBurn = Math.max(1, Math.round(burnCost / 250));
+    const burnedTokens = activeTokens.slice(0, blocksToBurn);
+    const survivingTokens = activeTokens.slice(blocksToBurn);
+
+    // Reconstrucción inmediata del ADN con las monedas restantes
+    let newDnaSignature = "0 TOKENS (TOTALMENTE INCINERADOS)";
+    if (survivingTokens.length > 0) {
+      const rawNew = survivingTokens.join('::') + `::${userId}::RECONSTITUIDO::${Date.now()}`;
+      const hashNew = crypto.createHmac('sha256', ADMOB_TOKEN_SECRET).update(rawNew).digest('hex');
+      newDnaSignature = `MAX-DNA-RECONSTITUIDO-${hashNew.substring(0, 20).toUpperCase()}`;
+    }
+
+    // Hash Criptográfico de Quema (Incineración)
     const timestamp = Date.now();
     const burnHash = crypto.createHash('sha256')
-      .update(`BURN:${userId}:${burnCost}:${item}:${timestamp}`)
+      .update(`BURN:${userId}:${burnCost}:${item}:${timestamp}:${burnedTokens.join(',')}`)
       .digest('hex');
     const burnId = `BURN-${burnHash.substring(0, 16).toUpperCase()}`;
 
-    // 3. Descontar del usuario y registrar quema en su registro
+    // 3. Descontar del usuario y registrar quema + nuevo ADN reconstituido
     const newBalance = curBalance - burnCost;
-    const patchUserUrl = `${userDocUrl}&updateMask.fieldPaths=MAXCOINS&updateMask.fieldPaths=saldoMaxCoins&updateMask.fieldPaths=ultimo_quemado&updateMask.fieldPaths=fecha_ultimo_quemado`;
+    const patchUserUrl = `${userDocUrl}&updateMask.fieldPaths=MAXCOINS&updateMask.fieldPaths=saldoMaxCoins&updateMask.fieldPaths=ultimo_quemado&updateMask.fieldPaths=ultimo_token_adn&updateMask.fieldPaths=adn_tokens_libres&updateMask.fieldPaths=fecha_ultimo_quemado`;
     await fetch(patchUserUrl, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1677,6 +1710,8 @@ app.post('/api/maxfapp/burn-purchase', async (req, res) => {
           MAXCOINS: { integerValue: String(newBalance) },
           saldoMaxCoins: { integerValue: String(newBalance) },
           ultimo_quemado: { stringValue: burnId },
+          ultimo_token_adn: { stringValue: newDnaSignature },
+          adn_tokens_libres: { stringValue: JSON.stringify(survivingTokens) },
           fecha_ultimo_quemado: { timestampValue: new Date().toISOString() }
         }
       })
@@ -1695,6 +1730,8 @@ app.post('/api/maxfapp/burn-purchase', async (req, res) => {
             monto: { integerValue: String(burnCost) },
             burn_id: { stringValue: burnId },
             burn_hash: { stringValue: burnHash },
+            burned_tokens: { stringValue: JSON.stringify(burnedTokens) },
+            surviving_dna: { stringValue: newDnaSignature },
             fecha: { timestampValue: new Date().toISOString() },
             estado: { stringValue: 'INCINERADO_DEFINITIVO' }
           }
