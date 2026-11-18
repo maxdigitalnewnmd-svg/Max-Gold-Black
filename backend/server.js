@@ -1736,6 +1736,20 @@ app.post('/api/maxfapp/burn-purchase', async (req, res) => {
       }
     } catch (e) {}
 
+    // BLINDAJE ANTI-INYECCIÓN Y ANTI-MOD: Cada moneda debe poseer bloque físico en el ADN
+    const maxMonedasAutenticas = activeTokens.length * 250;
+    if (burnCost > maxMonedasAutenticas) {
+      console.warn(`[MAXFAPP Sentinel] ⚠️ ALERTA DE INYECCIÓN en usuario ${userId}: Saldo visual ${curBalance} MXC, pero su ADN solo respalda ${maxMonedasAutenticas} MXC.`);
+      return res.status(403).json({
+        success: false,
+        error: 'INYECCION_DETECTADA',
+        balanceVisual: curBalance,
+        balanceAutenticoADN: maxMonedasAutenticas,
+        intentado: burnCost,
+        message: `Operación bloqueada por Render Sentinel: Se detectaron monedas inyectadas sin firma de ADN del algoritmo. Tu saldo certificado real es de ${maxMonedasAutenticas} MAXCOINS.`
+      });
+    }
+
     // Cada token representa 250 monedas en el algoritmo
     const blocksToBurn = Math.max(1, Math.round(burnCost / 250));
     const burnedTokens = activeTokens.slice(0, blocksToBurn);
