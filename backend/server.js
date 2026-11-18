@@ -1483,7 +1483,8 @@ app.post('/api/maxfapp/watch-ad-progress', async (req, res) => {
     const now = Date.now();
     const lastClick = userAdClickCooldowns.get(userId) || 0;
     const diff = (now - lastClick) / 1000;
-    if (diff < 10) {
+    const isBypass = req.body && req.body.bypassCooldown === true;
+    if (diff < 10 && !isBypass) {
       const waitRemaining = Math.ceil(10 - diff);
       return res.status(429).json({
         success: false,
