@@ -1424,6 +1424,325 @@ app.get('/api/admob/reward-callback', async (req, res) => {
   }
 });
 
+// =========================================================================
+// MÓDULO MAXFAPP: ZONA DE RECOMPENSAS, RECONSTITUCIÓN DE ADN Y QUEMA DE TOKENS
+// =========================================================================
+
+// Cache en memoria para rate-limiting de clics por usuario (10 segundos estricto)
+const userAdClickCooldowns = new Map();
+
+// 1. Obtener estado del usuario en tiempo real
+app.get('/api/maxfapp/user-status', async (req, res) => {
+  try {
+    const userId = req.query.userId || req.query.uid;
+    if (!userId) return res.status(400).json({ error: 'USER_ID_REQUIRED' });
+
+    const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${userId}?key=${FIRESTORE_API_KEY}`;
+    const uResp = await fetch(userDocUrl);
+    if (!uResp.ok) {
+      return res.status(404).json({ error: 'USER_NOT_FOUND', message: 'Usuario no registrado en la Bóveda' });
+    }
+    const uDoc = await uResp.json();
+    const fields = parseFirestoreDoc(uDoc.fields);
+
+    const adsVisto = parseInt(fields.ads_visto || '0', 10);
+    const balance = parseInt(fields.MAXCOINS !== undefined ? fields.MAXCOINS : (fields.saldoMaxCoins || 0), 10);
+    const email = fields.EMAIL || fields.email || 'usuario@maxfapp.com';
+
+    const lastClick = userAdClickCooldowns.get(userId) || 0;
+    const now = Date.now();
+    const elapsedSec = Math.floor((now - lastClick) / 1000);
+    const remainingCooldown = Math.max(0, 10 - elapsedSec);
+
+    return res.json({
+      success: true,
+      uid: userId,
+      email: email,
+      ads_visto: adsVisto,
+      target_ads: 10,
+      ready_to_claim: adsVisto >= 10,
+      saldoMaxCoins: balance,
+      ultimo_token_adn: fields.ultimo_token_adn || fields.token_adn || null,
+      fecha_ultima_recompensa: fields.fecha_ultima_recompensa || null,
+      cooldown_remaining_sec: remainingCooldown
+    });
+  } catch (err) {
+    console.warn('[MAXFAPP Status] Error consultando usuario:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Registrar progreso de anuncio visto (con cooldown estricto de 10s)
+app.post('/api/maxfapp/watch-ad-progress', async (req, res) => {
+  try {
+    const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'USER_ID_REQUIRED' });
+
+    // Verificación de tasa de refresco (10 segundos mínimos entre clics/anuncios)
+    const now = Date.now();
+    const lastClick = userAdClickCooldowns.get(userId) || 0;
+    const diff = (now - lastClick) / 1000;
+    if (diff < 10) {
+      const waitRemaining = Math.ceil(10 - diff);
+      return res.status(429).json({
+        success: false,
+        error: 'COOLDOWN_ACTIVE',
+        remaining_seconds: waitRemaining,
+        message: `Por seguridad debe esperar ${waitRemaining}s antes de registrar otro anuncio.`
+      });
+    }
+
+    // Actualizar cooldown
+    userAdClickCooldowns.set(userId, now);
+
+    // Consultar usuario en Firestore
+    const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${userId}?key=${FIRESTORE_API_KEY}`;
+    const uResp = await fetch(userDocUrl);
+    if (!uResp.ok) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+
+    const uDoc = await uResp.json();
+    const fields = parseFirestoreDoc(uDoc.fields);
+    const currentAds = parseInt(fields.ads_visto || '0', 10);
+    const nextAds = currentAds + 1;
+
+    // Actualizar Firestore
+    const patchUrl = `${userDocUrl}&updateMask.fieldPaths=ads_visto&updateMask.fieldPaths=last_ad_view`;
+    await fetch(patchUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fields: {
+          ads_visto: { stringValue: String(nextAds) },
+          last_ad_view: { timestampValue: new Date().toISOString() }
+        }
+      })
+    });
+
+    console.log(`[MAXFAPP Ads] Usuario ${userId} vio anuncio: ${nextAds}/10`);
+    return res.json({
+      success: true,
+      ads_visto: nextAds,
+      target: 10,
+      ready_to_claim: nextAds >= 10,
+      message: nextAds >= 10
+        ? '¡Has completado los 10 anuncios! Reclama tus 1,000 MAXCOINS ahora.'
+        : `Anuncio ${nextAds}/10 completado. Faltan ${10 - nextAds} anuncios.`
+    });
+  } catch (err) {
+    console.warn('[MAXFAPP Ads] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Reclamar 1,000 MAXCOINS (Descuenta de Vault, Tokeniza ADN y acredita a usuario)
+app.post('/api/maxfapp/claim-reward', async (req, res) => {
+  try {
+    const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'USER_ID_REQUIRED' });
+
+    // 1. Obtener usuario
+    const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${userId}?key=${FIRESTORE_API_KEY}`;
+    const uResp = await fetch(userDocUrl);
+    if (!uResp.ok) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+
+    const uDoc = await uResp.json();
+    const fields = parseFirestoreDoc(uDoc.fields);
+    const currentAds = parseInt(fields.ads_visto || '0', 10);
+
+    if (currentAds < 10) {
+      return res.status(400).json({
+        success: false,
+        error: 'REQUISITO_INCOMPLETO',
+        ads_visto: currentAds,
+        required: 10,
+        message: `Aún no cumples la meta: llevas ${currentAds} de 10 anuncios.`
+      });
+    }
+
+    // 2. Descontar 1,000 de Vault totalCoins
+    let remainingVaultCoins = 0;
+    try {
+      const vResp = await fetch(FIRESTORE_VAULT_URL);
+      if (vResp.ok) {
+        const vDoc = await vResp.json();
+        const vFields = parseFirestoreDoc(vDoc.fields);
+        const curVault = parseInt(vFields.totalCoins || '0', 10);
+        remainingVaultCoins = Math.max(0, curVault - 1000);
+
+        const patchVaultUrl = `${FIRESTORE_VAULT_URL}&updateMask.fieldPaths=totalCoins&updateMask.fieldPaths=lastServerSync`;
+        await fetch(patchVaultUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              totalCoins: { integerValue: String(remainingVaultCoins) },
+              lastServerSync: { timestampValue: new Date().toISOString() }
+            }
+          })
+        });
+      }
+    } catch (vErr) {
+      console.warn('[MAXFAPP Claim] Error descontando de Vault:', vErr.message);
+    }
+
+    // 3. Generar Token Criptográfico de ADN Reconstituido
+    const timestamp = Date.now();
+    const dnaHash = crypto.createHmac('sha256', ADMOB_TOKEN_SECRET)
+      .update(`${userId}:${timestamp}:1000:VAULT_REWARD_TRANSFER`)
+      .digest('hex');
+    const tokenSignature = `MAX-DNA-${dnaHash.substring(0, 24).toUpperCase()}`;
+
+    // 4. Acreditar 1,000 MAXCOINS al usuario y resetear ads_visto a 0
+    const curBalance = parseInt(fields.MAXCOINS !== undefined ? fields.MAXCOINS : (fields.saldoMaxCoins || 0), 10);
+    const newBalance = curBalance + 1000;
+
+    const patchUserUrl = `${userDocUrl}&updateMask.fieldPaths=MAXCOINS&updateMask.fieldPaths=saldoMaxCoins&updateMask.fieldPaths=ads_visto&updateMask.fieldPaths=ultimo_token_adn&updateMask.fieldPaths=fecha_ultima_recompensa`;
+    await fetch(patchUserUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fields: {
+          MAXCOINS: { integerValue: String(newBalance) },
+          saldoMaxCoins: { integerValue: String(newBalance) },
+          ads_visto: { stringValue: '0' },
+          ultimo_token_adn: { stringValue: tokenSignature },
+          fecha_ultima_recompensa: { timestampValue: new Date().toISOString() }
+        }
+      })
+    });
+
+    console.log(`[MAXFAPP Claim] Usuario ${userId} reclamó 1,000 MAXCOINS. Nuevo saldo: ${newBalance}. Token: ${tokenSignature}`);
+
+    return res.json({
+      success: true,
+      reward: 1000,
+      newBalance: newBalance,
+      tokenDna: tokenSignature,
+      totalCoinsVault: remainingVaultCoins,
+      ads_visto: 0,
+      message: '¡Felicidades! Has reclamado 1,000 MAXCOINS autenticadas y encriptadas con ADN cuántico.'
+    });
+  } catch (err) {
+    console.warn('[MAXFAPP Claim] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Quema de Tokens (Compras / Regalitos en MAXFAPP)
+app.post('/api/maxfapp/burn-purchase', async (req, res) => {
+  try {
+    const { userId, cost, itemName } = req.body || {};
+    const burnCost = parseInt(cost, 10);
+    const item = itemName || `Regalo de ${burnCost} MAXCOINS`;
+
+    if (!userId || !burnCost || burnCost <= 0) {
+      return res.status(400).json({ error: 'PARAMETROS_INVALIDOS' });
+    }
+
+    // 1. Obtener usuario y verificar saldo
+    const userDocUrl = `${FIRESTORE_USUARIOS_URL}/${userId}?key=${FIRESTORE_API_KEY}`;
+    const uResp = await fetch(userDocUrl);
+    if (!uResp.ok) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+
+    const uDoc = await uResp.json();
+    const fields = parseFirestoreDoc(uDoc.fields);
+    const curBalance = parseInt(fields.MAXCOINS !== undefined ? fields.MAXCOINS : (fields.saldoMaxCoins || 0), 10);
+
+    if (curBalance < burnCost) {
+      return res.status(400).json({
+        success: false,
+        error: 'SALDO_INSUFICIENTE',
+        currentBalance: curBalance,
+        required: burnCost,
+        message: `Saldo insuficiente. Tienes ${curBalance} MAXCOINS y requieres ${burnCost} MAXCOINS para ${item}.`
+      });
+    }
+
+    // 2. Generar Hash Criptográfico de Quema (Incineración)
+    const timestamp = Date.now();
+    const burnHash = crypto.createHash('sha256')
+      .update(`BURN:${userId}:${burnCost}:${item}:${timestamp}`)
+      .digest('hex');
+    const burnId = `BURN-${burnHash.substring(0, 16).toUpperCase()}`;
+
+    // 3. Descontar del usuario y registrar quema en su registro
+    const newBalance = curBalance - burnCost;
+    const patchUserUrl = `${userDocUrl}&updateMask.fieldPaths=MAXCOINS&updateMask.fieldPaths=saldoMaxCoins&updateMask.fieldPaths=ultimo_quemado&updateMask.fieldPaths=fecha_ultimo_quemado`;
+    await fetch(patchUserUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fields: {
+          MAXCOINS: { integerValue: String(newBalance) },
+          saldoMaxCoins: { integerValue: String(newBalance) },
+          ultimo_quemado: { stringValue: burnId },
+          fecha_ultimo_quemado: { timestampValue: new Date().toISOString() }
+        }
+      })
+    });
+
+    // 4. Registrar en colección 'tokens_quemados' en Firestore (visible en Incinerador MAXSOFT)
+    try {
+      const burnDocUrl = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT_ID}/databases/(default)/documents/tokens_quemados?documentId=${burnId}&key=${FIRESTORE_API_KEY}`;
+      await fetch(burnDocUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            uid: { stringValue: userId },
+            item: { stringValue: item },
+            monto: { integerValue: String(burnCost) },
+            burn_id: { stringValue: burnId },
+            burn_hash: { stringValue: burnHash },
+            fecha: { timestampValue: new Date().toISOString() },
+            estado: { stringValue: 'INCINERADO_DEFINITIVO' }
+          }
+        })
+      });
+    } catch (bErr) {
+      console.warn('[MAXFAPP Burn] Error guardando registro en tokens_quemados:', bErr.message);
+    }
+
+    // 5. Incrementar tokensQuemados en 'empresa/metricas'
+    try {
+      const mResp = await fetch(FIRESTORE_METRICAS_URL);
+      if (mResp.ok) {
+        const mDoc = await mResp.json();
+        const mFields = parseFirestoreDoc(mDoc.fields);
+        const curQuemados = parseInt(mFields.tokensQuemados || '0', 10);
+        const newQuemados = curQuemados + burnCost;
+
+        const patchMetricas = `${FIRESTORE_METRICAS_URL}&updateMask.fieldPaths=tokensQuemados&updateMask.fieldPaths=lastBurnSync`;
+        await fetch(patchMetricas, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              tokensQuemados: { integerValue: String(newQuemados) },
+              lastBurnSync: { timestampValue: new Date().toISOString() }
+            }
+          })
+        });
+      }
+    } catch (mErr) {}
+
+    console.log(`[MAXFAPP Burn] 🔥 Incineración completada: -${burnCost} MXC para ${userId}. Burn ID: ${burnId}. Nuevo saldo: ${newBalance}`);
+
+    return res.json({
+      success: true,
+      item: item,
+      burnedAmount: burnCost,
+      newBalance: newBalance,
+      burnId: burnId,
+      burnHash: burnHash,
+      message: `¡${item} adquirido con éxito! Se han destruido e incinerado ${burnCost} tokens de tu Bóveda.`
+    });
+  } catch (err) {
+    console.warn('[MAXFAPP Burn] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Sincronización automática de AdMob cada 15 minutos (y a los 5 segundos del arranque)
 setInterval(syncAdMobMetricsToFirestore, 15 * 60 * 1000);
 setTimeout(syncAdMobMetricsToFirestore, 5000);
